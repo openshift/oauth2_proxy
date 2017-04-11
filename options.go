@@ -35,6 +35,9 @@ type Options struct {
 	GoogleGroups             []string `flag:"google-group" cfg:"google_group"`
 	GoogleAdminEmail         string   `flag:"google-admin-email" cfg:"google_admin_email"`
 	GoogleServiceAccountJSON string   `flag:"google-service-account-json" cfg:"google_service_account_json"`
+	OpenShiftGroup           string   `flag:"openshift-group" cfg:"openshift_group"`
+	OpenShiftSAR             string   `flag:"openshift-sar" cfg:"openshift_sar"`
+	OpenShiftCAs             []string `flag:"openshift-ca" cfg:"openshift_ca"`
 	HtpasswdFile             string   `flag:"htpasswd-file" cfg:"htpasswd_file"`
 	DisplayHtpasswdForm      bool     `flag:"display-htpasswd-form" cfg:"display_htpasswd_form"`
 	CustomTemplatesDir       string   `flag:"custom-templates-dir" cfg:"custom_templates_dir"`
@@ -243,6 +246,10 @@ func parseProviderInfo(o *Options, msgs []string) []string {
 		p.Configure(o.AzureTenant)
 	case *providers.GitHubProvider:
 		p.SetOrgTeam(o.GitHubOrg, o.GitHubTeam)
+	case *providers.OpenShiftProvider:
+		if err := p.Configure(o.OpenShiftGroup, o.OpenShiftSAR, o.OpenShiftCAs); err != nil {
+			msgs = append(msgs, fmt.Sprintf("unable to load OpenShift configuration: %v", err))
+		}
 	case *providers.GoogleProvider:
 		if o.GoogleServiceAccountJSON != "" {
 			file, err := os.Open(o.GoogleServiceAccountJSON)
