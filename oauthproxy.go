@@ -524,6 +524,11 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 
 	session, err := p.redeemCode(req.Host, req.Form.Get("code"))
 	if err != nil {
+		if err == providers.ErrPermissionDenied {
+			log.Printf("%s Permission Denied: user is unauthorized when redeeming token", remoteAddr)
+			p.ErrorPage(rw, 403, "Permission Denied", "Invalid Account")
+			return
+		}
 		log.Printf("%s error redeeming code %s", remoteAddr, err)
 		p.ErrorPage(rw, 500, "Internal Error", "Internal Error")
 		return

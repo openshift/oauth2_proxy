@@ -1,6 +1,8 @@
 package providers
 
 import (
+	"errors"
+
 	"github.com/bitly/oauth2_proxy/cookie"
 )
 
@@ -15,6 +17,9 @@ type Provider interface {
 	SessionFromCookie(string, *cookie.Cipher) (*SessionState, error)
 	CookieForSession(*SessionState, *cookie.Cipher) (string, error)
 }
+
+// ErrPermissionDenied may be returned from Redeem() to indicate the user is not allowed to login.
+var ErrPermissionDenied = errors.New("permission denied")
 
 func New(provider string, p *ProviderData) Provider {
 	switch provider {
