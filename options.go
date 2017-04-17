@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,14 +19,15 @@ import (
 
 // Configuration Options that can be set by Command Line Flag, or Config File
 type Options struct {
-	ProxyPrefix  string `flag:"proxy-prefix" cfg:"proxy-prefix"`
-	HttpAddress  string `flag:"http-address" cfg:"http_address"`
-	HttpsAddress string `flag:"https-address" cfg:"https_address"`
-	RedirectURL  string `flag:"redirect-url" cfg:"redirect_url"`
-	ClientID     string `flag:"client-id" cfg:"client_id" env:"OAUTH2_PROXY_CLIENT_ID"`
-	ClientSecret string `flag:"client-secret" cfg:"client_secret" env:"OAUTH2_PROXY_CLIENT_SECRET"`
-	TLSCertFile  string `flag:"tls-cert" cfg:"tls_cert_file"`
-	TLSKeyFile   string `flag:"tls-key" cfg:"tls_key_file"`
+	ProxyPrefix      string `flag:"proxy-prefix" cfg:"proxy-prefix"`
+	HttpAddress      string `flag:"http-address" cfg:"http_address"`
+	HttpsAddress     string `flag:"https-address" cfg:"https_address"`
+	RedirectURL      string `flag:"redirect-url" cfg:"redirect_url"`
+	ClientID         string `flag:"client-id" cfg:"client_id" env:"OAUTH2_PROXY_CLIENT_ID"`
+	ClientSecret     string `flag:"client-secret" cfg:"client_secret" env:"OAUTH2_PROXY_CLIENT_SECRET"`
+	ClientSecretFile string `flag:"client-secret-file" cfg:"client_secret_file" env:"OAUTH2_PROXY_CLIENT_SECRET_FILE"`
+	TLSCertFile      string `flag:"tls-cert" cfg:"tls_cert_file"`
+	TLSKeyFile       string `flag:"tls-key" cfg:"tls_key_file"`
 
 	AuthenticatedEmailsFile  string   `flag:"authenticated-emails-file" cfg:"authenticated_emails_file"`
 	AzureTenant              string   `flag:"azure-tenant" cfg:"azure_tenant"`
@@ -43,13 +45,14 @@ type Options struct {
 	CustomTemplatesDir       string   `flag:"custom-templates-dir" cfg:"custom_templates_dir"`
 	Footer                   string   `flag:"footer" cfg:"footer"`
 
-	CookieName     string        `flag:"cookie-name" cfg:"cookie_name" env:"OAUTH2_PROXY_COOKIE_NAME"`
-	CookieSecret   string        `flag:"cookie-secret" cfg:"cookie_secret" env:"OAUTH2_PROXY_COOKIE_SECRET"`
-	CookieDomain   string        `flag:"cookie-domain" cfg:"cookie_domain" env:"OAUTH2_PROXY_COOKIE_DOMAIN"`
-	CookieExpire   time.Duration `flag:"cookie-expire" cfg:"cookie_expire" env:"OAUTH2_PROXY_COOKIE_EXPIRE"`
-	CookieRefresh  time.Duration `flag:"cookie-refresh" cfg:"cookie_refresh" env:"OAUTH2_PROXY_COOKIE_REFRESH"`
-	CookieSecure   bool          `flag:"cookie-secure" cfg:"cookie_secure"`
-	CookieHttpOnly bool          `flag:"cookie-httponly" cfg:"cookie_httponly"`
+	CookieName       string        `flag:"cookie-name" cfg:"cookie_name" env:"OAUTH2_PROXY_COOKIE_NAME"`
+	CookieSecret     string        `flag:"cookie-secret" cfg:"cookie_secret" env:"OAUTH2_PROXY_COOKIE_SECRET"`
+	CookieSecretFile string        `flag:"cookie-secret-file" cfg:"cookie_secret_file" env:"OAUTH2_PROXY_COOKIE_SECRET_FILE"`
+	CookieDomain     string        `flag:"cookie-domain" cfg:"cookie_domain" env:"OAUTH2_PROXY_COOKIE_DOMAIN"`
+	CookieExpire     time.Duration `flag:"cookie-expire" cfg:"cookie_expire" env:"OAUTH2_PROXY_COOKIE_EXPIRE"`
+	CookieRefresh    time.Duration `flag:"cookie-refresh" cfg:"cookie_refresh" env:"OAUTH2_PROXY_COOKIE_REFRESH"`
+	CookieSecure     bool          `flag:"cookie-secure" cfg:"cookie_secure"`
+	CookieHttpOnly   bool          `flag:"cookie-httponly" cfg:"cookie_httponly"`
 
 	Upstreams             []string `flag:"upstream" cfg:"upstreams"`
 	SkipAuthRegex         []string `flag:"skip-auth-regex" cfg:"skip_auth_regex"`
@@ -124,6 +127,22 @@ func parseURL(to_parse string, urltype string, msgs []string) (*url.URL, []strin
 
 func (o *Options) Validate() error {
 	msgs := make([]string, 0)
+
+	if o.CookieSecretFile != "" {
+		if contents, err := ioutil.ReadFile(o.CookieSecretFile); err != nil {
+			msgs = append(msgs, fmt.Sprintf("cannot read cookie-secret-file: %v", err))
+		} else {
+			o.CookieSecret = string(contents)
+		}
+	}
+	if o.ClientSecretFile != "" {
+		if contents, err := ioutil.ReadFile(o.ClientSecretFile); err != nil {
+			msgs = append(msgs, fmt.Sprintf("cannot read client-secret-file: %v", err))
+		} else {
+			o.ClientSecret = string(contents)
+		}
+	}
+
 	if len(o.Upstreams) < 1 {
 		msgs = append(msgs, "missing setting: upstream")
 	}
