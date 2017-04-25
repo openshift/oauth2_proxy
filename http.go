@@ -2,6 +2,8 @@ package main
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -72,6 +74,21 @@ func (s *Server) ServeHTTPS() {
 	config.Certificates[0], err = tls.LoadX509KeyPair(s.Opts.TLSCertFile, s.Opts.TLSKeyFile)
 	if err != nil {
 		log.Fatalf("FATAL: loading tls config (%s, %s) failed - %s", s.Opts.TLSCertFile, s.Opts.TLSKeyFile, err)
+	}
+
+	if len(s.Opts.TLSClientCAFiles) > 0 {
+		config.ClientAuth = tls.RequestClientCert
+		clients := x509.NewCertPool()
+		for _, file := range s.Opts.TLSClientCAFiles {
+			data, err := ioutil.ReadFile(file)
+			if err != nil {
+				log.Fatalf("FATAL: loading tls client CA (%s) failed - %s", file, err)
+			}
+			if !clients.AppendCertsFromPEM(data) {
+				log.Fatalf("FATAL: unable to load valid CA from %s", file)
+			}
+		}
+		config.ClientCAs = clients
 	}
 
 	ln, err := net.Listen("tcp", addr)

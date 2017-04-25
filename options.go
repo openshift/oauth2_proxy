@@ -3,6 +3,7 @@ package main
 import (
 	"crypto"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
@@ -19,15 +20,16 @@ import (
 
 // Configuration Options that can be set by Command Line Flag, or Config File
 type Options struct {
-	ProxyPrefix      string `flag:"proxy-prefix" cfg:"proxy-prefix"`
-	HttpAddress      string `flag:"http-address" cfg:"http_address"`
-	HttpsAddress     string `flag:"https-address" cfg:"https_address"`
-	RedirectURL      string `flag:"redirect-url" cfg:"redirect_url"`
-	ClientID         string `flag:"client-id" cfg:"client_id" env:"OAUTH2_PROXY_CLIENT_ID"`
-	ClientSecret     string `flag:"client-secret" cfg:"client_secret" env:"OAUTH2_PROXY_CLIENT_SECRET"`
-	ClientSecretFile string `flag:"client-secret-file" cfg:"client_secret_file" env:"OAUTH2_PROXY_CLIENT_SECRET_FILE"`
-	TLSCertFile      string `flag:"tls-cert" cfg:"tls_cert_file"`
-	TLSKeyFile       string `flag:"tls-key" cfg:"tls_key_file"`
+	ProxyPrefix      string   `flag:"proxy-prefix" cfg:"proxy-prefix"`
+	HttpAddress      string   `flag:"http-address" cfg:"http_address"`
+	HttpsAddress     string   `flag:"https-address" cfg:"https_address"`
+	RedirectURL      string   `flag:"redirect-url" cfg:"redirect_url"`
+	ClientID         string   `flag:"client-id" cfg:"client_id" env:"OAUTH2_PROXY_CLIENT_ID"`
+	ClientSecret     string   `flag:"client-secret" cfg:"client_secret" env:"OAUTH2_PROXY_CLIENT_SECRET"`
+	ClientSecretFile string   `flag:"client-secret-file" cfg:"client_secret_file" env:"OAUTH2_PROXY_CLIENT_SECRET_FILE"`
+	TLSCertFile      string   `flag:"tls-cert" cfg:"tls_cert_file"`
+	TLSKeyFile       string   `flag:"tls-key" cfg:"tls_key_file"`
+	TLSClientCAFiles []string `flag:"tls-client-ca" cfg:"tls_client_ca"`
 
 	AuthenticatedEmailsFile  string   `flag:"authenticated-emails-file" cfg:"authenticated_emails_file"`
 	AzureTenant              string   `flag:"azure-tenant" cfg:"azure_tenant"`
@@ -40,6 +42,7 @@ type Options struct {
 	OpenShiftGroup           string   `flag:"openshift-group" cfg:"openshift_group"`
 	OpenShiftSAR             string   `flag:"openshift-sar" cfg:"openshift_sar"`
 	OpenShiftCAs             []string `flag:"openshift-ca" cfg:"openshift_ca"`
+	OpenShiftClientCertCNs   []string `flag:"openshift-client-cert-cn" cfg:"openshift_client_cert_cn"`
 	HtpasswdFile             string   `flag:"htpasswd-file" cfg:"htpasswd_file"`
 	DisplayHtpasswdForm      bool     `flag:"display-htpasswd-form" cfg:"display_htpasswd_form"`
 	CustomTemplatesDir       string   `flag:"custom-templates-dir" cfg:"custom_templates_dir"`
@@ -87,6 +90,8 @@ type Options struct {
 	CompiledRegex []*regexp.Regexp
 	provider      providers.Provider
 	signatureData *SignatureData
+
+	clientCertValidate func(*x509.Certificate) (*providers.SessionState, error)
 }
 
 type SignatureData struct {
@@ -229,6 +234,10 @@ func (o *Options) Validate() error {
 		}
 	}
 
+	if len(o.TLSClientCAFiles) > 0 && len(o.TLSKeyFile) == 0 && len(o.TLSCertFile) == 0 {
+		msgs = append(msgs, "tls-client-ca requires tls-key-file or tls-cert-file to be set to listen on tls")
+	}
+
 	msgs = parseSignatureKey(o, msgs)
 	msgs = validateCookieName(o, msgs)
 
@@ -269,6 +278,7 @@ func parseProviderInfo(o *Options, msgs []string) []string {
 		if err := p.Configure(o.OpenShiftGroup, o.OpenShiftSAR, o.OpenShiftCAs); err != nil {
 			msgs = append(msgs, fmt.Sprintf("unable to load OpenShift configuration: %v", err))
 		}
+		o.clientCertValidate = p.ClientCertVerification(o.OpenShiftClientCertCNs)
 	case *providers.GoogleProvider:
 		if o.GoogleServiceAccountJSON != "" {
 			file, err := os.Open(o.GoogleServiceAccountJSON)

@@ -21,7 +21,9 @@ func main() {
 	upstreams := StringArray{}
 	skipAuthRegex := StringArray{}
 	googleGroups := StringArray{}
+	openshiftClientCertCNs := StringArray{}
 	openshiftCAs := StringArray{}
+	clientCAs := StringArray{}
 
 	config := flagSet.String("config", "", "path to config file")
 	showVersion := flagSet.Bool("version", false, "print version string")
@@ -30,6 +32,7 @@ func main() {
 	flagSet.String("https-address", ":443", "<addr>:<port> to listen on for HTTPS clients")
 	flagSet.String("tls-cert", "", "path to certificate file")
 	flagSet.String("tls-key", "", "path to private key file")
+	flagSet.Var(&clientCAs, "tls-client-ca", "paths to CA roots for trusted client certificates for admitting clients (may be given multiple times).")
 	flagSet.String("redirect-url", "", "the OAuth Redirect URL. ie: \"https://internalapp.yourcompany.com/oauth2/callback\"")
 	flagSet.Bool("set-xauthrequest", false, "set X-Auth-Request-User and X-Auth-Request-Email response headers (useful in Nginx auth_request mode)")
 	flagSet.Var(&upstreams, "upstream", "the http url(s) of the upstream endpoint or file:// paths for static files. Routing is based on the path")
@@ -52,6 +55,7 @@ func main() {
 	flagSet.String("google-service-account-json", "", "the path to the service account json credentials")
 	flagSet.String("openshift-group", "", "restrict logins to members of this group (or groups, if encoded as a JSON array).")
 	flagSet.String("openshift-sar", "", "require this encoded subject access review to authorize (may be a JSON list).")
+	flagSet.Var(&openshiftClientCertCNs, "openshift-client-cert-cn", "allow clients that have a valid client certificate with the provided common name to access (may be given multiple times).")
 	flagSet.Var(&openshiftCAs, "openshift-ca", "paths to CA roots for the OpenShift API (may be given multiple times, defaults to /var/run/secrets/kubernetes.io/serviceaccount/ca.crt).")
 	flagSet.String("client-id", "", "the OAuth Client ID: ie: \"123456.apps.googleusercontent.com\"")
 	flagSet.String("client-secret", "", "the OAuth Client Secret")

@@ -11,10 +11,10 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/bitly/go-simplejson"
-	"os"
 )
 
 func emptyURL(u *url.URL) bool {
@@ -158,6 +158,21 @@ func (p *OpenShiftProvider) Configure(groups, reviews string, caPaths []string) 
 		}
 	}
 	return nil
+}
+
+func (p *OpenShiftProvider) ClientCertVerification(cns []string) func(cert *x509.Certificate) (*SessionState, error) {
+	if len(cns) == 0 {
+		return nil
+	}
+	return func(cert *x509.Certificate) (*SessionState, error) {
+		for _, cn := range cns {
+			if cn == cert.Subject.CommonName {
+				return &SessionState{User: cert.Subject.CommonName, Email: cert.Subject.CommonName + "@cluster.local"}, nil
+			}
+		}
+		log.Printf("Permission denied for client certificate, only %v allowed: %#v %v", cns, cert.Subject, cert.EmailAddresses)
+		return nil, nil
+	}
 }
 
 func (p *OpenShiftProvider) GetEmailAddress(s *SessionState) (string, error) {
