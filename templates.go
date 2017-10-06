@@ -115,7 +115,7 @@ func getTemplates() *template.Template {
 	{{ if .SignInMessage }}
 	<p>{{.SignInMessage}}</p>
 	{{ end}}
-	<button type="submit" class="btn">Sign in with a {{.ProviderName}} Account</button><br/>
+	<button type="submit" class="btn">Sign in with an OpenShift account</button><br/>
 	</form>
 	</div>
 
@@ -142,7 +142,7 @@ func getTemplates() *template.Template {
 	<footer>
 	{{ if eq .Footer "-" }}
 	{{ else if eq .Footer ""}}
-	Secured with <a href="https://github.com/openshift/oauth-proxy#oauth2_proxy">OAuth2 Proxy</a> version {{.Version}}
+	Secured with <a href="https://github.com/openshift/oauth-proxy#oauth2_proxy">OpenShift oauth-proxy</a> version {{.Version}}
 	{{ else }}
 	{{.Footer}}
 	{{ end }}
