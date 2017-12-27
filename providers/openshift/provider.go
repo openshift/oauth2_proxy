@@ -44,6 +44,8 @@ type OpenShiftProvider struct {
 	defaultRecord authorizer.AttributesRecord
 	reviews       []string
 	paths         recordsByPath
+
+	ProjectURL *url.URL
 }
 
 func New() *OpenShiftProvider {
@@ -62,7 +64,7 @@ func (p *OpenShiftProvider) Bind(flags *flag.FlagSet) {
 
 // LoadDefaults accepts configuration and loads defaults from the environment, or returns an error.
 // The provider may partially initialize config for subsequent calls.
-func (p *OpenShiftProvider) LoadDefaults(serviceAccount string, caPaths []string, reviewJSON, resources string) (*providers.ProviderData, error) {
+func (p *OpenShiftProvider) LoadDefaults(serviceAccount string, caPaths []string, reviewJSON, resources string, extraData bool) (*providers.ProviderData, error) {
 	if len(resources) > 0 {
 		paths, err := parseResources(resources)
 		if err != nil {
@@ -80,8 +82,14 @@ func (p *OpenShiftProvider) LoadDefaults(serviceAccount string, caPaths []string
 		return nil, err
 	}
 
+	var scope string
+	scope = "user:info user:check-access"
+	if extraData == true {
+		scope = scope + " user:list-projects"
+	}
+
 	defaults := &providers.ProviderData{
-		Scope: "user:info user:check-access",
+		Scope: scope,
 	}
 
 	// all OpenShift service accounts are OAuth clients, use this if we have it
@@ -260,6 +268,12 @@ func (p *OpenShiftProvider) Complete(data *providers.ProviderData, reviewURL *ur
 		}
 	}
 
+	p.ProjectURL = &url.URL{
+		Scheme: data.ValidateURL.Scheme,
+		Host:   data.ValidateURL.Host,
+		Path:   "/apis/project.openshift.io/v1/projects",
+	}
+
 	p.ProviderData = data
 	p.ReviewURL = reviewURL
 
@@ -397,6 +411,49 @@ func (p *OpenShiftProvider) reviewUser(name, accessToken string) error {
 		}
 	}
 	return nil
+}
+
+func (p *OpenShiftProvider) GetUserProjects(s *providers.SessionState) (projs []string, err error) {
+	projs = []string{}
+	req, err := http.NewRequest("GET", p.ProjectURL.String(), nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken))
+	json, err := request(p.Client, req)
+	if err != nil {
+		return
+	}
+	projects, err := json.Get("items").Array()
+	if err != nil {
+		return
+	}
+
+	for _, i := range projects {
+		project, ok := i.(map[string]interface{})
+		if !ok {
+			err = errors.New(fmt.Sprintf("invalid project data: %s", err))
+			return
+		}
+		metadata, ok := project["metadata"].(map[string]interface{})
+		if !ok {
+			err = errors.New(fmt.Sprintf("bad project metadata: %s", err))
+			return
+		}
+		projs = append(projs, metadata["name"].(string))
+	}
+	log.Printf("project list %s", projs)
+	return
+}
+
+func (p *OpenShiftProvider) GetExtraData(s *providers.SessionState) (d map[string]string, err error) {
+	d = map[string]string{}
+	projects, err := p.GetUserProjects(s)
+	if err != nil {
+		return
+	}
+	d["Projects"] = fmt.Sprint(strings.Join(projects, ","))
+	return
 }
 
 // Copied up only to set a different client CA

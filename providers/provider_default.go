@@ -106,6 +106,10 @@ func (p *ProviderData) GetEmailAddress(s *SessionState) (string, error) {
 	return "", errors.New("not implemented")
 }
 
+func (p *ProviderData) GetExtraData(s *SessionState) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
 // ValidateGroup validates that the provided email exists in the configured provider
 // email group(s).
 func (p *ProviderData) ValidateGroup(email string) bool {

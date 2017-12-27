@@ -66,6 +66,7 @@ type Options struct {
 	SSLInsecureSkipVerify bool     `flag:"ssl-insecure-skip-verify" cfg:"ssl_insecure_skip_verify"`
 	SetXAuthRequest       bool     `flag:"set-xauthrequest" cfg:"set_xauthrequest"`
 	SkipAuthPreflight     bool     `flag:"skip-auth-preflight" cfg:"skip_auth_preflight"`
+	PassExtraData         bool     `flag:"pass-extra-data" cfg:"pass_extra_data"`
 
 	// These options allow for other providers besides Google, with
 	// potential overrides.
@@ -116,6 +117,7 @@ func NewOptions() *Options {
 		PassHostHeader:      true,
 		ApprovalPrompt:      "force",
 		RequestLogging:      true,
+		PassExtraData:       false,
 	}
 }
 
@@ -134,7 +136,7 @@ func (o *Options) Validate(p providers.Provider) error {
 	// allow the provider to default some values
 	switch provider := p.(type) {
 	case *openshift.OpenShiftProvider:
-		defaults, err := provider.LoadDefaults(o.OpenShiftServiceAccount, o.OpenShiftCAs, o.OpenShiftSAR, o.OpenShiftDelegateURLs)
+		defaults, err := provider.LoadDefaults(o.OpenShiftServiceAccount, o.OpenShiftCAs, o.OpenShiftSAR, o.OpenShiftDelegateURLs, o.PassExtraData)
 		if err != nil {
 			return err
 		}
@@ -220,7 +222,7 @@ func (o *Options) Validate(p providers.Provider) error {
 		o.CompiledRegex = append(o.CompiledRegex, CompiledRegex)
 	}
 
-	if o.PassAccessToken || (o.CookieRefresh != time.Duration(0)) {
+	if o.PassExtraData || o.PassAccessToken || (o.CookieRefresh != time.Duration(0)) {
 		valid_cookie_secret_size := false
 		for _, i := range []int{16, 24, 32} {
 			if len(secretBytes(o.CookieSecret)) == i {
