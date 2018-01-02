@@ -69,7 +69,7 @@ Example:
 
 A user who visits the proxy will be redirected to an OAuth login with OpenShift, and must grant
 access to the proxy to view their user info and request permissions for them. Once they have granted
-that right to the proxy, it will check whether the user has the required permissions. If they do 
+that right to the proxy, it will check whether the user has the required permissions. If they do
 not, they'll be given a permission denied error. If they are, they'll be logged in via a cookie.
 
 Run `oc explain subjectaccessreview` to see the schema for a review, including other fields.
@@ -86,7 +86,7 @@ to validate any incoming requests with an `Authorization: Bearer` header or clie
 to be forwarded to the master for verification. If the user authenticates, they are then
 checked against one of the entries in the provided map
 
-The value of the flag is a JSON map of path prefixes to `v1beta1.ResourceAttributes`, and the 
+The value of the flag is a JSON map of path prefixes to `v1beta1.ResourceAttributes`, and the
 longest path prefix is checked. If no path matches the request, authentication and authorization
 are skipped.
 
@@ -107,8 +107,8 @@ Example:
     # Grant access only to paths under /api
     --openshift-delegate-urls='{"/api":{"group":"custom.group","resource":"myproxy""verb":"get"}}'
 
-WARNING: Because users are sending their own credentials to the proxy, it's important to use this 
-setting only when the proxy is under control of the cluster administrators. Otherwise, end users 
+WARNING: Because users are sending their own credentials to the proxy, it's important to use this
+setting only when the proxy is under control of the cluster administrators. Otherwise, end users
 may be unwittingly provide their credentials to untrusted components that can then act as them.
 
 
@@ -116,15 +116,26 @@ may be unwittingly provide their credentials to untrusted components that can th
 
 #### `--openshift-service-account=NAME`
 
-Will attempt to read the `--client-id` and `--client-secret` from the service account information 
+Will attempt to read the `--client-id` and `--client-secret` from the service account information
 injected by OpenShift. Uses the value of `/var/run/secrets/kubernetes.io/serviceaccount/namespace`
-to build the correct `--client-id`, and the contents of 
+to build the correct `--client-id`, and the contents of
 `/var/run/secrets/kubernetes.io/serviceaccount/token` as the `--client-secret`.
 
 #### `--openshift-ca`
 
 One or more paths to CA certificates that should be used when connecting to the OpenShift master.
 If none are provided, the proxy will default to using `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`.
+
+
+#### `--pass-project-headers`
+
+Will request the `user:list-projects` scope from OpenShift OAuth and will get list of projects that the
+user has access to and encode it in the session cookie. Note that if the list of projects changes in
+OpenShift after the user has logged into the oauth-proxy, the change will not be reflected in the header
+value until re-login.
+
+The list of projects will be accessible to upstream with the `X-Forwarded-Projects` header as well as
+`X-Auth-Request-Projects` if `--set-xauthrequest` is also set.
 
 
 ### Discovering the OAuth configuration of an OpenShift cluster
@@ -139,7 +150,7 @@ of OpenShift you can specify these flags directly using the existing flags for t
 In order for service accounts to be used as OAuth clients, they must have the [proper OAuth annotations set](https://docs.openshift.org/latest/architecture/additional_concepts/authentication.html#service-accounts-as-oauth-clients).
 to point to a valid external URL. In most cases, this can be a route exposing the service fronting your
 proxy. We recommend using a `Reencrypt` type route and [service serving certs](https://docs.openshift.org/latest/dev_guide/secrets.html#service-serving-certificate-secrets) to maximize end to end
-security. See [contrib/sidecar.yaml](contrib/sidecar.yaml) for an example of these used in concert. 
+security. See [contrib/sidecar.yaml](contrib/sidecar.yaml) for an example of these used in concert.
 
 By default, the redirect URI of a service account set up as an OAuth client must point to an HTTPS endpoint which
 is a common configuration error.
@@ -215,6 +226,7 @@ Usage of oauth2_proxy:
   -pass-basic-auth: pass HTTP Basic Auth, X-Forwarded-User and X-Forwarded-Email information to upstream (default true)
   -pass-host-header: pass the request Host Header to upstream (default true)
   -pass-user-headers: pass X-Forwarded-User and X-Forwarded-Email information to upstream (default true)
+  -pass-project-headers: pass users's list of OpenShift projects to upstream via X-Forwarded-Projects header
   -profile-url string: Profile access endpoint
   -provider string: OAuth provider (default "google")
   -proxy-prefix string: the url root path that this proxy should be nested under (e.g. /<oauth2>/sign_in) (default "/oauth")
