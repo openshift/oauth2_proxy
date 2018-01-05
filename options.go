@@ -45,6 +45,7 @@ type Options struct {
 	OpenShiftCAs            []string `flag:"openshift-ca" cfg:"openshift_ca"`
 	OpenShiftServiceAccount string   `flag:"openshift-service-account" cfg:"openshift_service_account"`
 	OpenShiftDelegateURLs   string   `flag:"openshift-delegate-urls" cfg:"openshift_delegate_urls"`
+	PassProjectHeaders      bool     `flag:"pass-project-headers" cfg:"pass_project_headers"`
 
 	CookieName       string        `flag:"cookie-name" cfg:"cookie_name" env:"OAUTH2_PROXY_COOKIE_NAME"`
 	CookieSecret     string        `flag:"cookie-secret" cfg:"cookie_secret" env:"OAUTH2_PROXY_COOKIE_SECRET"`
@@ -116,6 +117,7 @@ func NewOptions() *Options {
 		PassHostHeader:      true,
 		ApprovalPrompt:      "force",
 		RequestLogging:      true,
+		PassProjectHeaders:  false,
 	}
 }
 
@@ -134,7 +136,7 @@ func (o *Options) Validate(p providers.Provider) error {
 	// allow the provider to default some values
 	switch provider := p.(type) {
 	case *openshift.OpenShiftProvider:
-		defaults, err := provider.LoadDefaults(o.OpenShiftServiceAccount, o.OpenShiftCAs, o.OpenShiftSAR, o.OpenShiftDelegateURLs)
+		defaults, err := provider.LoadDefaults(o.OpenShiftServiceAccount, o.OpenShiftCAs, o.OpenShiftSAR, o.OpenShiftDelegateURLs, o.PassProjectHeaders)
 		if err != nil {
 			return err
 		}
@@ -220,7 +222,7 @@ func (o *Options) Validate(p providers.Provider) error {
 		o.CompiledRegex = append(o.CompiledRegex, CompiledRegex)
 	}
 
-	if o.PassAccessToken || (o.CookieRefresh != time.Duration(0)) {
+	if o.PassProjectHeaders || o.PassAccessToken || (o.CookieRefresh != time.Duration(0)) {
 		valid_cookie_secret_size := false
 		for _, i := range []int{16, 24, 32} {
 			if len(secretBytes(o.CookieSecret)) == i {

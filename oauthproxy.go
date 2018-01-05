@@ -73,6 +73,7 @@ type OAuthProxy struct {
 	PassUserHeaders     bool
 	BasicAuthPassword   string
 	PassAccessToken     bool
+	PassProjectHeaders  bool
 	CookieCipher        *cookie.Cipher
 	skipAuthRegex       []string
 	skipAuthPreflight   bool
@@ -232,7 +233,7 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 	log.Printf("Cookie settings: name:%s secure(https):%v httponly:%v expiry:%s domain:%s refresh:%s", opts.CookieName, opts.CookieSecure, opts.CookieHttpOnly, opts.CookieExpire, domain, refresh)
 
 	var cipher *cookie.Cipher
-	if opts.PassAccessToken || (opts.CookieRefresh != time.Duration(0)) {
+	if opts.PassProjectHeaders || opts.PassAccessToken || (opts.CookieRefresh != time.Duration(0)) {
 		var err error
 		cipher, err = cookie.NewCipher(secretBytes(opts.CookieSecret))
 		if err != nil {
@@ -288,6 +289,7 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		PassUserHeaders:    opts.PassUserHeaders,
 		BasicAuthPassword:  opts.BasicAuthPassword,
 		PassAccessToken:    opts.PassAccessToken,
+		PassProjectHeaders: opts.PassProjectHeaders,
 		SkipProviderButton: opts.SkipProviderButton,
 		CookieCipher:       cipher,
 		templates:          loadTemplates(opts.CustomTemplatesDir),
@@ -329,6 +331,12 @@ func (p *OAuthProxy) redeemCode(host, code string) (s *providers.SessionState, e
 
 	if s.Email == "" {
 		s.Email, err = p.provider.GetEmailAddress(s)
+	}
+	if p.PassProjectHeaders {
+		s.Extra, err = p.provider.GetExtraData(s)
+		if err != nil {
+			return
+		}
 	}
 	return
 }
@@ -774,10 +782,20 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 			req.Header["X-Forwarded-Email"] = []string{session.Email}
 		}
 	}
+	if p.PassProjectHeaders {
+		for k, v := range session.Extra {
+			req.Header[fmt.Sprintf("X-Forwarded-%s", k)] = []string{v}
+		}
+	}
 	if p.SetXAuthRequest {
 		rw.Header().Set("X-Auth-Request-User", session.User)
 		if session.Email != "" {
 			rw.Header().Set("X-Auth-Request-Email", session.Email)
+		}
+		if p.PassProjectHeaders {
+			for k, v := range session.Extra {
+				rw.Header().Set(fmt.Sprintf("X-Auth-Request-%s", k), v)
+			}
 		}
 	}
 	if p.PassAccessToken && session.AccessToken != "" {

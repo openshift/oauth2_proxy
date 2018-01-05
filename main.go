@@ -69,6 +69,7 @@ func main() {
 	flagSet.String("openshift-review-url", "", "Permission check endpoint (defaults to the subject access review endpoint)")
 	flagSet.String("openshift-delegate-urls", "", "If set, perform delegated authorization against the OpenShift API server. Value is a JSON map of path prefixes to v1beta1.ResourceAttribute records that must be granted to the user to continue. E.g. {\"/\":{\"resource\":\"pods\",\"namespace\":\"default\",\"name\":\"test\"}} only allows users who can see the pod test in namespace default.")
 	flagSet.String("openshift-service-account", "", "An optional name of an OpenShift service account to act as. If set, the injected service account info will be used to determine the client ID and client secret.")
+	flagSet.Bool("pass-project-headers", false, "pass users's list of OpenShift projects to upstream via X-Forwarded-Projects header")
 
 	flagSet.String("cookie-name", "_oauth_proxy", "the name of the cookie that the oauth_proxy creates")
 	flagSet.String("cookie-secret", "", "the seed string for secure cookies (optionally base64 encoded)")
