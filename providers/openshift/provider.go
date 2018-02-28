@@ -21,6 +21,7 @@ import (
 	"github.com/openshift/oauth-proxy/util"
 
 	"k8s.io/apiserver/pkg/authentication/authenticator"
+	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	authenticationv1beta1 "k8s.io/client-go/pkg/apis/authentication/v1beta1"
 	authorizationv1beta1 "k8s.io/client-go/pkg/apis/authorization/v1beta1"
@@ -280,6 +281,58 @@ func parseResources(resources string) (recordsByPath, error) {
 	return paths, nil
 }
 
+type viaUserAPI struct {
+	whoAmIURL string
+	client    *http.Client
+}
+
+func (a viaUserAPI) AuthenticateRequest(req *http.Request) (user.Info, bool, error) {
+	auth := req.Header.Get("Authorization")
+	if auth == "" {
+		return nil, false, errors.New("No Authorization header in the request")
+	}
+
+	parts := strings.SplitN(auth, " ", 2)
+	if parts[0] != "Bearer" {
+		return nil, false, errors.New("Authorization header is not Bearer")
+	}
+
+	accessToken := parts[1]
+
+	req, err := http.NewRequest("GET", a.whoAmIURL, nil)
+	if err != nil {
+		return nil, false, err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+	json, err := request(a.client, req)
+	if err != nil {
+		return nil, false, err
+	}
+
+	username, err := json.Get("metadata").Get("name").String()
+	if err != nil {
+		return nil, false, err
+	}
+
+	uid, err := json.Get("metadata").Get("uid").String()
+	if err != nil {
+		return nil, false, err
+	}
+
+	groups, err := json.Get("groups").StringArray()
+	if err != nil {
+		return nil, false, err
+	}
+
+	return &user.DefaultInfo{Name: username, UID: uid, Groups: groups}, true, nil
+}
+
+func (a viaUserAPI) Authorize(attrs authorizer.Attributes) (authorized bool, reason string, err error) {
+	return true, "", nil
+}
+
 // Complete performs final setup on the provider or returns an error.
 func (p *OpenShiftProvider) Complete(data *providers.ProviderData, reviewURL *url.URL) error {
 	if emptyURL(reviewURL) {
@@ -311,7 +364,22 @@ func (p *OpenShiftProvider) Complete(data *providers.ProviderData, reviewURL *ur
 				},
 			})
 			if err != nil {
-				return fmt.Errorf("unable to retrieve authentication information for tokens: %v", err)
+				log.Printf(`WARN: Unable to retrieve authentication information for tokens: %v\n
+	Possibly because of missing role, try adding system:auth-delegator, e.g.\n
+	oc adm policy add-cluster-role-to-user system:auth-delegator -z <serviceAccount>\n
+	Falling back to User API for authentication, authorization will be ignored!`, err)
+
+				whoAmIURL := &url.URL{
+					Scheme: data.LoginURL.Scheme,
+					Host:   data.LoginURL.Host,
+					Path:   "/apis/user.openshift.io/v1/users/~",
+				}
+
+				usingUserAPI := viaUserAPI{client: p.Client, whoAmIURL: whoAmIURL.String()}
+				p.authenticator = usingUserAPI
+				p.authorizer = usingUserAPI
+
+				return nil
 			}
 		}
 
