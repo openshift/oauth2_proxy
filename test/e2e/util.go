@@ -85,7 +85,7 @@ func waitForHealthzCheck(cas [][]byte, url string) error {
 		return err
 	}
 	return wait.PollImmediate(time.Second, 50*time.Second, func() (bool, error) {
-		resp, err := getResponse(url+"/oauth/healthz", client)
+		resp, err := getResponse(url+"/oauth/healthz", client, "")
 		if err != nil {
 			return false, err
 		}
@@ -132,7 +132,7 @@ func waitUntilRouteIsReady(cas [][]byte, url string) error {
 		return err
 	}
 	return wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
-		resp, err := getResponse(url, client)
+		resp, err := getResponse(url, client, "")
 		if err != nil {
 			if err.Error()[len(err.Error())-3:] == "EOF" {
 				return false, nil
@@ -144,13 +144,16 @@ func waitUntilRouteIsReady(cas [][]byte, url string) error {
 	})
 }
 
-func getResponse(host string, client *http.Client) (*http.Response, error) {
+func getResponse(host string, client *http.Client, bearer string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", host, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("Accept", "*/*")
+	if len(bearer) > 0 {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

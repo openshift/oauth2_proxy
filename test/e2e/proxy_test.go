@@ -25,6 +25,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 		pageResult     string
 		backendEnvs    []string
 		bypass         bool
+		passBearer     bool
 	}{
 		"basic": {
 			oauthProxyArgs: []string{
@@ -58,6 +59,225 @@ func TestOAuthProxyE2E(t *testing.T) {
 			},
 			backendEnvs: []string{},
 			expectedErr: "403 Permission Denied",
+			pageResult:  "Hello OpenShift!\n",
+		},
+		"delegate-pass": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-delegate-urls={"/": {"resource":"namespaces", "verb": "get", "resourceName":"` + ns + `","namespace":"` + ns + `"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "",
+			pageResult:  "Hello OpenShift!\n",
+			passBearer:  true,
+		},
+		"delegate-pass-nobearer": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-delegate-urls={"/": {"resource":"namespaces", "verb": "get", "resourceName":"` + ns + `","namespace":"` + ns + `"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "",
+			pageResult:  "Hello OpenShift!\n",
+		},
+		"delegate-deny": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-delegate-urls={"/": {"resource":"secrets", "verb": "list", "namespace":"kube-system"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "did not reach upstream site",
+			pageResult:  "Hello OpenShift!\n",
+			passBearer:  true,
+		},
+		// This fails. we should be implicitly applying delegate-url sars to the openshift-sar checks performed against a cookie
+		"delegate-deny-nobearer": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-delegate-urls={"/": {"resource":"secrets", "verb": "list", "namespace":"kube-system"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "did not reach upstream site",
+			pageResult:  "Hello OpenShift!\n",
+		},
+		"delegate-pass-sar-deny": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-sar={"namespace":"other","resource":"services","verb":"list"}`,
+				`--openshift-delegate-urls={"/": {"resource":"namespaces", "verb": "get", "resourceName":"` + ns + `","namespace":"` + ns + `"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "did not reach upstream site",
+			pageResult:  "Hello OpenShift!\n",
+			passBearer:  true,
+		},
+		"delegate-pass-sar-deny-nobearer": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-sar={"namespace":"other","resource":"services","verb":"list"}`,
+				`--openshift-delegate-urls={"/": {"resource":"namespaces", "verb": "get", "resourceName":"` + ns + `","namespace":"` + ns + `"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "did not reach upstream site",
+			pageResult:  "Hello OpenShift!\n",
+		},
+		"delegate-deny-sar-pass": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-sar={"namespace":"` + ns + `","resource":"services","verb":"list"}`,
+				`--openshift-delegate-urls={"/": {"resource":"secrets", "verb": "list", "namespace":"kube-system"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "did not reach upstream site",
+			pageResult:  "Hello OpenShift!\n",
+			passBearer:  true,
+		},
+		"delegate-deny-sar-pass-nobearer": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-sar={"namespace":"` + ns + `","resource":"services","verb":"list"}`,
+				`--openshift-delegate-urls={"/": {"resource":"secrets", "verb": "list", "namespace":"kube-system"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "",
+			pageResult:  "Hello OpenShift!\n",
+		},
+		"delegate-deny-sar-deny": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-sar={"namespace":"other","resource":"services","verb":"list"}`,
+				`--openshift-delegate-urls={"/": {"resource":"secrets", "verb": "list", "namespace":"kube-system"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "did not reach upstream site",
+			pageResult:  "Hello OpenShift!\n",
+			passBearer:  true,
+		},
+		"delegate-deny-sar-deny-nobearer": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-sar={"namespace":"other","resource":"services","verb":"list"}`,
+				`--openshift-delegate-urls={"/": {"resource":"secrets", "verb": "list", "namespace":"kube-system"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "did not reach upstream site",
+			pageResult:  "Hello OpenShift!\n",
+		},
+		"delegate-pass-sar-pass": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-sar={"namespace":"` + ns + `","resource":"services","verb":"list"}`,
+				`--openshift-delegate-urls={"/": {"resource":"namespaces", "verb": "get", "resourceName":"` + ns + `","namespace":"` + ns + `"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "",
+			pageResult:  "Hello OpenShift!\n",
+			passBearer:  true,
+		},
+		"delegate-pass-sar-pass-nobearer": {
+			oauthProxyArgs: []string{
+				"--https-address=:8443",
+				"--provider=openshift",
+				"--openshift-service-account=proxy",
+				"--upstream=http://localhost:8080",
+				"--tls-cert=/etc/tls/private/tls.crt",
+				"--tls-key=/etc/tls/private/tls.key",
+				"--tls-client-ca=/etc/tls/private/ca.crt",
+				"--cookie-secret=SECRET",
+				"--skip-provider-button",
+				`--openshift-sar={"namespace":"` + ns + `","resource":"services","verb":"list"}`,
+				`--openshift-delegate-urls={"/": {"resource":"namespaces", "verb": "get", "resourceName":"` + ns + `","namespace":"` + ns + `"}}`,
+			},
+			backendEnvs: []string{},
+			expectedErr: "",
 			pageResult:  "Hello OpenShift!\n",
 		},
 		"sar-ok": {
@@ -306,6 +526,18 @@ func TestOAuthProxyE2E(t *testing.T) {
 				t.Fatalf("setup: error creating SA: %s", err)
 			}
 
+			// log in admin to be able to add delegator clusterrole
+			_, err = execCmd("oc", []string{"login", "-u", "system:admin"}, "")
+			if err != nil {
+				t.Fatalf("setup: error logging admin in")
+			}
+
+			// add auth-delegator clusterrole for delegation tests
+			ou, err := execCmd("oc", []string{"adm", "policy", "add-cluster-role-to-user", "system:auth-delegator", "-z", "proxy", "--rolebinding-name", "proxy-delegate"}, "")
+			if err != nil {
+				t.Fatalf("setup: error creating delegator rolebinding %s", ou)
+			}
+
 			err = newOAuthProxyRoute(ns)
 			if err != nil {
 				t.Fatalf("setup: error creating route: %s", err)
@@ -400,7 +632,28 @@ func TestOAuthProxyE2E(t *testing.T) {
 
 			waitForHealthzCheck([][]byte{caPem, openshiftPemCA}, "https://"+proxyRouteHost)
 
-			err = confirmOAuthFlow(proxyRouteHost, tc.accessSubPath, [][]byte{caPem, openshiftPemCA}, user, tc.pageResult, tc.expectedErr, tc.bypass)
+			token := ""
+			if tc.passBearer {
+				_, err = execCmd("oc", []string{"login", "-u", user, "-p", "foo"}, "")
+				if err != nil {
+					t.Fatalf("setup: error logging in for token")
+				}
+				userToken, err := execCmd("oc", []string{"whoami", "-t"}, "")
+				if err != nil {
+					t.Fatalf("setup: error getting token")
+				}
+				_, err = execCmd("oc", []string{"login", "-u", "system:admin"}, "")
+				if err != nil {
+					t.Fatalf("setup: error logging admin back in")
+				}
+				// strip newline
+				token = userToken[:len(userToken)-1]
+			}
+			if len(token) > 0 {
+				t.Logf("setup: passing token '%s' for user '%s'", token, user)
+			}
+
+			err = confirmOAuthFlow(proxyRouteHost, tc.accessSubPath, [][]byte{caPem, openshiftPemCA}, user, tc.pageResult, tc.expectedErr, tc.bypass, token)
 
 			if err == nil && len(tc.expectedErr) > 0 {
 				t.Errorf("expected error '%s', but test passed", tc.expectedErr)
@@ -466,7 +719,7 @@ func submitOAuthForm(client *http.Client, response *http.Response, user, expecte
 	return postResp, nil
 }
 
-func confirmOAuthFlow(host, subPath string, cas [][]byte, user, expectedPageResult, expectedErr string, expectedBypass bool) error {
+func confirmOAuthFlow(host, subPath string, cas [][]byte, user, expectedPageResult, expectedErr string, expectedBypass bool, token string) error {
 	// Set up the client cert store
 	client, err := newHTTPSClient(cas)
 	if err != nil {
@@ -474,12 +727,14 @@ func confirmOAuthFlow(host, subPath string, cas [][]byte, user, expectedPageResu
 	}
 
 	startUrl := "https://" + host + subPath
-	resp, err := getResponse(startUrl, client)
+	resp, err := getResponse(startUrl, client, token)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
+	if len(token) > 0 {
+		expectedBypass = true
+	}
 	if !expectedBypass {
 		// OpenShift login
 		loginResp, err := submitOAuthForm(client, resp, user, expectedErr)
