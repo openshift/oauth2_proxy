@@ -363,6 +363,19 @@ func (p *OpenShiftProvider) ValidateRequest(req *http.Request) (*providers.Sessi
 
 	auth := req.Header.Get("Authorization")
 
+	var token string
+	parts := strings.SplitN(auth, " ", 2)
+	if len(parts) == 2 {
+		if parts[0] == "Bearer" {
+			token = parts[1]
+		}
+	}
+
+	// skip the below requests if we are not provided a token
+	if len(token) == 0 {
+		return nil, nil
+	}
+
 	// authenticate
 	user, ok, err := p.authenticator.AuthenticateRequest(req)
 	if err != nil {
@@ -383,9 +396,8 @@ func (p *OpenShiftProvider) ValidateRequest(req *http.Request) (*providers.Sessi
 		return nil, nil
 	}
 
-	parts := strings.SplitN(auth, " ", 2)
 	session := &providers.SessionState{User: user.GetName(), Email: user.GetName() + "@cluster.local"}
-	if parts[0] == "Bearer" {
+	if len(token) > 0 {
 		session.AccessToken = parts[1]
 	}
 	return session, nil
