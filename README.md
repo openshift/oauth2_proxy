@@ -65,7 +65,7 @@ Cons:
 Example:
 
     # Allows access if the user can view the service 'proxy' in namespace 'app-dev'
-    --openshift-sar='{"namespace":"app-dev","resource":"services","name":"proxy","verb":"get"}'
+    --openshift-sar='{"namespace":"app-dev","resource":"services","resourceName":"proxy","verb":"get"}'
 
 A user who visits the proxy will be redirected to an OAuth login with OpenShift, and must grant
 access to the proxy to view their user info and request permissions for them. Once they have granted
@@ -89,7 +89,7 @@ to be able to access the backed server.
 Example:
 
     # Allows access to foo.example.com if the user can view the service 'proxy' in namespace 'app-dev'
-    --openshift-sar-by-host='{"foo.example.com":{"namespace":"app-dev","resource":"services","name":"proxy","verb":"get"}}'
+    --openshift-sar-by-host='{"foo.example.com":{"namespace":"app-dev","resource":"services","resourceName":"proxy","verb":"get"}}'
 
 #### Delegate authentication and authorization to OpenShift for infrastructure
 
