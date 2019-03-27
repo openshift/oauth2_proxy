@@ -103,13 +103,17 @@ func (u *UpstreamProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func NewReverseProxy(target *url.URL, upstreamFlush time.Duration, rootCAs []string) (*httputil.ReverseProxy, error) {
+func NewReverseProxy(target *url.URL, opts *Options) (*httputil.ReverseProxy, error) {
+	upstreamFlush := opts.UpstreamFlush
+	rootCAs := opts.UpstreamCAs
+	insecureSSL := opts.SSLInsecureSkipVerify
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.FlushInterval = upstreamFlush
 
 	transport := &http.Transport{
 		MaxIdleConnsPerHost: 500,
 		IdleConnTimeout:     1 * time.Minute,
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: insecureSSL},
 	}
 	if len(rootCAs) > 0 {
 		pool, err := util.GetCertPool(rootCAs, false)
@@ -156,7 +160,8 @@ func NewFileServer(path string, filesystemPath string) (proxy http.Handler) {
 
 func NewWebSocketOrRestReverseProxy(u *url.URL, opts *Options, auth hmacauth.HmacAuth) (restProxy http.Handler) {
 	u.Path = ""
-	proxy, err := NewReverseProxy(u, opts.UpstreamFlush, opts.UpstreamCAs)
+	// proxy, err := NewReverseProxy(u, opts.UpstreamFlush, opts.UpstreamCAs)
+	proxy, err := NewReverseProxy(u, opts)
 	if err != nil {
 		log.Fatal("Failed to initialize Reverse Proxy: ", err)
 	}
