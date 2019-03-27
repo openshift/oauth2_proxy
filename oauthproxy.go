@@ -71,6 +71,7 @@ type OAuthProxy struct {
 	PassUserHeaders     bool
 	BasicAuthPassword   string
 	PassAccessToken     bool
+	PassAuthBearer      bool
 	PassUserBearerToken bool
 	CookieCipher        *cookie.Cipher
 	authRegex           []string
@@ -103,10 +104,7 @@ func (u *UpstreamProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func NewReverseProxy(target *url.URL, opts *Options) (*httputil.ReverseProxy, error) {
-	upstreamFlush := opts.UpstreamFlush
-	rootCAs := opts.UpstreamCAs
-	insecureSSL := opts.SSLInsecureSkipVerify
+func NewReverseProxy(target *url.URL, upstreamFlush time.Duration, rootCAs []string, insecureSSL bool) (*httputil.ReverseProxy, error) {
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.FlushInterval = upstreamFlush
 
@@ -161,7 +159,7 @@ func NewFileServer(path string, filesystemPath string) (proxy http.Handler) {
 func NewWebSocketOrRestReverseProxy(u *url.URL, opts *Options, auth hmacauth.HmacAuth) (restProxy http.Handler) {
 	u.Path = ""
 	// proxy, err := NewReverseProxy(u, opts.UpstreamFlush, opts.UpstreamCAs)
-	proxy, err := NewReverseProxy(u, opts)
+	proxy, err := NewReverseProxy(u, opts.UpstreamFlush, opts.UpstreamCAs, opts.PassAuthBearer)
 	if err != nil {
 		log.Fatal("Failed to initialize Reverse Proxy: ", err)
 	}
@@ -288,6 +286,7 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		PassUserHeaders:     opts.PassUserHeaders,
 		BasicAuthPassword:   opts.BasicAuthPassword,
 		PassAccessToken:     opts.PassAccessToken,
+		PassAuthBearer:      opts.PassAuthBearer,
 		PassUserBearerToken: opts.PassUserBearerToken,
 		SkipProviderButton:  opts.SkipProviderButton,
 		CookieCipher:        cipher,
@@ -816,6 +815,9 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 	}
 	if ((!tokenProvidedByClient && p.PassAccessToken) || (tokenProvidedByClient && p.PassUserBearerToken)) && session.AccessToken != "" {
 		req.Header["X-Forwarded-Access-Token"] = []string{session.AccessToken}
+	}
+	if !tokenProvidedByClient && p.PassAuthBearer {
+		req.Header["Authorization"] = []string{fmt.Sprintf("Bearer %s", session.AccessToken)}
 	}
 	if session.Email == "" {
 		rw.Header().Set("GAP-Auth", session.User)
