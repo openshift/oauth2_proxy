@@ -19,6 +19,7 @@ import (
 
 	"github.com/18F/hmacauth"
 	"github.com/openshift/oauth-proxy/cookie"
+	"github.com/openshift/oauth-proxy/extensions"
 	"github.com/openshift/oauth-proxy/providers"
 	"github.com/openshift/oauth-proxy/util"
 	"github.com/yhat/wsutil"
@@ -80,6 +81,9 @@ type OAuthProxy struct {
 	compiledSkipRegex   []*regexp.Regexp
 	templates           *template.Template
 	Footer              string
+
+	//extensions
+	requestHandlers []extensions.RequestHandler
 }
 
 type UpstreamProxy struct {
@@ -708,7 +712,18 @@ func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 			p.SignInPage(rw, req, http.StatusForbidden)
 		}
 	} else {
-		p.serveMux.ServeHTTP(rw, req)
+		var err error
+		alteredReq := req
+		for _, reqhandler := range p.requestHandlers {
+			alteredReq, err = reqhandler.Process(alteredReq, nil)
+			if err != nil {
+				log.Printf("Error processing request in handler %s, %v", reqhandler.Name(), err)
+				p.ErrorPage(rw, http.StatusInternalServerError, "Internal Error", "Internal Error")
+				return
+			}
+		}
+		log.Printf("Request: %v", alteredReq)
+		p.serveMux.ServeHTTP(rw, alteredReq)
 	}
 }
 

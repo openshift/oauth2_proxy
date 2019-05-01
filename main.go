@@ -167,6 +167,8 @@ func main() {
 		}()
 	}
 
+	oauthproxy.registerExtensions(openshiftCAs)
+
 	var h http.Handler = oauthproxy
 	if opts.RequestLogging {
 		h = LoggingHandler(os.Stdout, h, true)
