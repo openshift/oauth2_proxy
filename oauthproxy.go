@@ -80,6 +80,7 @@ type OAuthProxy struct {
 	compiledSkipRegex   []*regexp.Regexp
 	templates           *template.Template
 	Footer              string
+	headers             http.Header
 }
 
 type UpstreamProxy struct {
@@ -250,6 +251,15 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		log.Printf("WARN: Configured to pass client specified bearer token upstream.\n      Only use this option if you're sure that the upstream will not leak or abuse the given token.\n      Bear in mind that the token could be a long lived token or hard to revoke.")
 	}
 
+	headers := http.Header{}
+	for _, value := range opts.Headers {
+		v := strings.SplitN(value, ":", 2)
+		if len(v) < 2 {
+			log.Fatalf("FATAL: header was not in `key:value` format: %s", value)
+		}
+		headers.Add(v[0], v[1])
+	}
+
 	return &OAuthProxy{
 		CookieName:     opts.CookieName,
 		CSRFCookieName: fmt.Sprintf("%v_%v", opts.CookieName, "csrf"),
@@ -288,6 +298,7 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		CookieCipher:        cipher,
 		templates:           loadTemplates(opts.CustomTemplatesDir),
 		Footer:              opts.Footer,
+		headers:             headers,
 	}
 }
 
@@ -816,6 +827,11 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 		rw.Header().Set("GAP-Auth", session.User)
 	} else {
 		rw.Header().Set("GAP-Auth", session.Email)
+	}
+	for k, vv := range p.headers {
+		for _, v := range vv {
+			req.Header.Add(k, v)
+		}
 	}
 	return http.StatusAccepted
 }

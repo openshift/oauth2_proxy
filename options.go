@@ -70,6 +70,7 @@ type Options struct {
 	SSLInsecureSkipVerify bool     `flag:"ssl-insecure-skip-verify" cfg:"ssl_insecure_skip_verify"`
 	SetXAuthRequest       bool     `flag:"set-xauthrequest" cfg:"set_xauthrequest"`
 	SkipAuthPreflight     bool     `flag:"skip-auth-preflight" cfg:"skip_auth_preflight"`
+	Headers               []string `flag:"header" cfg:"headers"`
 
 	// These options allow for other providers besides Google, with
 	// potential overrides.

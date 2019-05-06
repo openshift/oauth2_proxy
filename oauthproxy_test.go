@@ -894,3 +894,42 @@ func TestRequestSignaturePostRequest(t *testing.T) {
 	assert.Equal(t, 200, st.rw.Code)
 	assert.Equal(t, st.rw.Body.String(), "signatures match")
 }
+
+func TestSetHeaderTest(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		h := r.Header.Get("X-Tenant")
+		w.Write([]byte(h))
+	}))
+	defer upstream.Close()
+
+	opts := NewOptions()
+	opts.Upstreams = []string{upstream.URL}
+	opts.Headers = []string{"X-Tenant:Foo"}
+	opts.EmailDomains = []string{"*"}
+	opts.ClientID = "bazquux"
+	opts.ClientSecret = "xyzzyplugh"
+	opts.CookieSecret = "0123456789abcdefabcd"
+	opts.CookieRefresh = time.Hour
+
+	if err := opts.Validate(&testProvider{}); err != nil {
+		panic(err)
+	}
+
+	proxy := NewOAuthProxy(opts, func(email string) bool { return true })
+	proxy.provider = &TestProvider{ValidToken: true}
+	proxy.CookieRefresh = time.Duration(0)
+
+	rw := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/", strings.NewReader(""))
+	s := &providers.SessionState{Email: "michael.bland@gsa.gov", AccessToken: "my_access_token"}
+	value, _ := proxy.provider.CookieForSession(s, proxy.CookieCipher)
+	req.AddCookie(proxy.MakeSessionCookie(req, value, proxy.CookieExpire, time.Now()))
+
+	proxy.ServeHTTP(rw, req)
+	assert.Equal(t, http.StatusOK, rw.Code)
+	bodyBytes, _ := ioutil.ReadAll(rw.Body)
+	// fmt.Println(string(bodyBytes))
+	sb := string(bodyBytes)
+	assert.Equal(t, "Foo", sb)
+}

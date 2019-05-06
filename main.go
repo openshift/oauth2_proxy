@@ -29,6 +29,7 @@ func main() {
 	openshiftCAs := StringArray{}
 	clientCA := ""
 	upstreamCAs := StringArray{}
+	headers := StringArray{}
 
 	config := flagSet.String("config", "", "path to config file")
 	showVersion := flagSet.Bool("version", false, "print version string")
@@ -97,6 +98,7 @@ func main() {
 
 	flagSet.String("signature-key", "", "GAP-Signature request signature key (algorithm:secretkey)")
 	flagSet.Var(&upstreamCAs, "upstream-ca", "paths to CA roots for the Upstream (target) Server (may be given multiple times, defaults to system trust store).")
+	flagSet.Var(&headers, "header", "Add a header to the upstream request.")
 
 	providerOpenShift := openshift.New()
 	providerOpenShift.Bind(flagSet)
