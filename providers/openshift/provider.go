@@ -614,6 +614,9 @@ func getKubeAPIURLWithPath(path string) *url.URL {
 	if host := os.Getenv("KUBERNETES_SERVICE_HOST"); len(host) > 0 {
 		ret.Host = host
 	}
+    if port := os.Getenv("KUBERNETES_SERVICE_PORT"); len(port) > 0 {
+		ret.Host = fmt.Sprintf("%s:%s", ret.Host, port)
+	}
 
 	return ret
 }

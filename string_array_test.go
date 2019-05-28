@@ -1,8 +1,8 @@
 package main
 
 import (
-	"testing"
 	"github.com/bmizerany/assert"
+	"testing"
 )
 
 func TestStringArray(t *testing.T) {
