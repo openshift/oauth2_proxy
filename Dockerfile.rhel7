@@ -8,7 +8,7 @@ COPY --from=builder /go/src/github.com/openshift/oauth-proxy/oauth-proxy /usr/bi
 ENTRYPOINT ["/usr/bin/oauth-proxy"]
 LABEL io.k8s.display-name="OpenShift OAuth Proxy" \
       io.k8s.description="OpenShift OAuth Proxy component of OpenShift" \
-      maintainer="OpenShift Auth Team <aos-auth-team@redhat.com>" \
+      maintainer="OpenShift API Server and Auth Team <aos-apiserver@redhat.com>" \
       name="openshift/oauth-proxy" \
       version="v4.0.0" \
       License="GPLv2+" \
