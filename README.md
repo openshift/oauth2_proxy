@@ -69,7 +69,7 @@ Example:
 
 A user who visits the proxy will be redirected to an OAuth login with OpenShift, and must grant
 access to the proxy to view their user info and request permissions for them. Once they have granted
-that right to the proxy, it will check whether the user has the required permissions. If they do 
+that right to the proxy, it will check whether the user has the required permissions. If they do
 not, they'll be given a permission denied error. If they are, they'll be logged in via a cookie.
 
 Run `oc explain subjectaccessreview` to see the schema for a review, including other fields.
@@ -100,7 +100,7 @@ to validate any incoming requests with an `Authorization: Bearer` header or clie
 to be forwarded to the master for verification. If the user authenticates, they are then
 checked against one of the entries in the provided map
 
-The value of the flag is a JSON map of path prefixes to `v1beta1.ResourceAttributes`, and the 
+The value of the flag is a JSON map of path prefixes to `v1beta1.ResourceAttributes`, and the
 longest path prefix is checked. If no path matches the request, authentication and authorization
 are skipped.
 
@@ -121,8 +121,8 @@ Example:
     # Grant access only to paths under /api
     --openshift-delegate-urls='{"/api":{"group":"custom.group","resource":"myproxy""verb":"get"}}'
 
-WARNING: Because users are sending their own credentials to the proxy, it's important to use this 
-setting only when the proxy is under control of the cluster administrators. Otherwise, end users 
+WARNING: Because users are sending their own credentials to the proxy, it's important to use this
+setting only when the proxy is under control of the cluster administrators. Otherwise, end users
 may be unwittingly provide their credentials to untrusted components that can then act as them.
 
 When configured for delegation, Oauth Proxy will not set the `X-Forwarded-Access-Token` header on
@@ -137,9 +137,9 @@ mind that the tokens received from client could be long term and hard to revoke.
 
 #### `--openshift-service-account=NAME`
 
-Will attempt to read the `--client-id` and `--client-secret` from the service account information 
+Will attempt to read the `--client-id` and `--client-secret` from the service account information
 injected by OpenShift. Uses the value of `/var/run/secrets/kubernetes.io/serviceaccount/namespace`
-to build the correct `--client-id`, and the contents of 
+to build the correct `--client-id`, and the contents of
 `/var/run/secrets/kubernetes.io/serviceaccount/token` as the `--client-secret`.
 
 #### `--openshift-ca`
@@ -160,7 +160,7 @@ of OpenShift you can specify these flags directly using the existing flags for t
 In order for service accounts to be used as OAuth clients, they must have the [proper OAuth annotations set](https://docs.openshift.org/latest/architecture/additional_concepts/authentication.html#service-accounts-as-oauth-clients).
 to point to a valid external URL. In most cases, this can be a route exposing the service fronting your
 proxy. We recommend using a `Reencrypt` type route and [service serving certs](https://docs.openshift.org/latest/dev_guide/secrets.html#service-serving-certificate-secrets) to maximize end to end
-security. See [contrib/sidecar.yaml](contrib/sidecar.yaml) for an example of these used in concert. 
+security. See [contrib/sidecar.yaml](contrib/sidecar.yaml) for an example of these used in concert.
 
 By default, the redirect URI of a service account set up as an OAuth client must point to an HTTPS endpoint which
 is a common configuration error.
@@ -189,7 +189,7 @@ $ docker pull registry.svc.ci.openshift.org/ci/oauth-proxy:v1
 
 ## End-to-end testing
 
-To run the end-to-end test suite against a build of the current commit on an OpenShift cluster, use test/e2e.sh. You may need to change the DOCKER_REPO, KUBECONFIG, and TEST_NAMESPACE variables to accommodate your cluster. 
+To run the end-to-end test suite against a build of the current commit on an OpenShift cluster, use test/e2e.sh. You may need to change the DOCKER_REPO, KUBECONFIG, and TEST_NAMESPACE variables to accommodate your cluster.
 Each test sets up an oauth-proxy deployment and steps through the OAuth process, ensuring that the backend site can be reached (or not, depending on the test). The deployment is deleted before running the next test.
 DEBUG_TEST=testname can be used to skip the cleanup step for a specific test and halt the suite to allow for further debugging on the cluster.
 
@@ -263,6 +263,7 @@ Usage of oauth-proxy:
   -tls-cert string: path to certificate file
   -tls-key string: path to private key file
   -upstream value: the http url(s) of the upstream endpoint or file:// paths for static files. Routing is based on the path
+  -upstream-ca value: path to certificate authority for the upstream communication
   -validate-url string: Access token validation endpoint
   -version: print version string
 ```
