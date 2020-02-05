@@ -9,12 +9,17 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apiserver/pkg/authentication/authenticator"
 	"k8s.io/apiserver/pkg/authentication/authenticatorfactory"
 	"k8s.io/apiserver/pkg/authentication/request/headerrequest"
 	"k8s.io/apiserver/pkg/server/dynamiccertificates"
 	authenticationclient "k8s.io/client-go/kubernetes/typed/authentication/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 )
 
 type RequestHeaderAuthenticationOptions struct {
@@ -155,14 +160,48 @@ func (s *DelegatingAuthenticationOptions) ToAuthenticationConfig() (authenticato
 		}
 	}
 
+	saIssuer, err := s.getOpenShiftServiceAccountIssuer()
+	if err != nil {
+		return authenticatorfactory.DelegatingAuthenticatorConfig{}, err
+	}
+
 	ret := authenticatorfactory.DelegatingAuthenticatorConfig{
 		Anonymous:                          true,
 		TokenAccessReviewClient:            tokenClient,
+		APIAudiences:                       authenticator.Audiences{saIssuer},
 		CacheTTL:                           s.CacheTTL,
 		ClientCertificateCAContentProvider: clientCAProvider,
 		RequestHeaderConfig:                requestHeaderConfig,
 	}
 	return ret, nil
+}
+
+func (s *DelegatingAuthenticationOptions) getOpenShiftServiceAccountIssuer() (string, error) {
+	clientConfig, err := s.getClientConfig()
+	if err != nil {
+		return "", err
+	}
+
+	client, err := configv1client.NewForConfig(clientConfig)
+	if err != nil {
+		return "", err
+	}
+
+	authConfig, err := client.Authentications().Get("cluster", metav1.GetOptions{})
+	if err != nil && errors.IsNotFound(err) {
+		return "", err
+	}
+
+	if authConfig == nil {
+		return "", nil
+	}
+
+	if len(authConfig.Spec.ServiceAccountIssuer) == 0 {
+		// use the default openshift issuer
+		return "auth.openshift.io", nil
+	}
+
+	return authConfig.Spec.ServiceAccountIssuer, nil
 }
 
 func (s *DelegatingAuthenticationOptions) getClientCA() (*ClientCertAuthenticationOptions, error) {
