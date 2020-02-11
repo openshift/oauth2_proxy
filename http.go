@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"log"
 	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"k8s.io/apiserver/pkg/server/dynamiccertificates"
 
 	oscrypto "github.com/openshift/library-go/pkg/crypto"
 
@@ -75,10 +78,18 @@ func (s *Server) ServeHTTPS() {
 	}
 
 	var err error
-	config.Certificates = make([]tls.Certificate, 1)
-	config.Certificates[0], err = tls.LoadX509KeyPair(s.Opts.TLSCertFile, s.Opts.TLSKeyFile)
+	servingCertProvider, err := dynamiccertificates.NewDynamicServingContentFromFiles("serving", s.Opts.TLSCertFile, s.Opts.TLSKeyFile)
 	if err != nil {
 		log.Fatalf("FATAL: loading tls config (%s, %s) failed - %s", s.Opts.TLSCertFile, s.Opts.TLSKeyFile, err)
+	}
+	go servingCertProvider.Run(1, context.TODO().Done())
+
+	config.GetCertificate = func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		// this disregards information from ClientHello but we're not doing SNI anyway
+		cert, key := servingCertProvider.CurrentCertKeyContent()
+
+		certKeyPair, err := tls.X509KeyPair(cert, key)
+		return &certKeyPair, err
 	}
 
 	if len(s.Opts.TLSClientCAFile) > 0 {
