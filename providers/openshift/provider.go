@@ -633,6 +633,10 @@ func getKubeAPIURLWithPath(path string) *url.URL {
 	}
 
 	if host := os.Getenv("KUBERNETES_SERVICE_HOST"); len(host) > 0 {
+		// assume IPv6 if host contains colons
+		if strings.IndexByte(host, ':') != -1 {
+			host = "[" + host + "]"
+		}
 		ret.Host = host
 	}
 
