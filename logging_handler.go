@@ -4,6 +4,8 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -62,6 +64,14 @@ func (l *responseLogger) Status() int {
 
 func (l *responseLogger) Size() int {
 	return l.size
+}
+
+// Support Websockets
+func (l *responseLogger) Hijack() (rwc net.Conn, buf *bufio.ReadWriter, err error) {
+	if hij, ok := l.w.(http.Hijacker); ok {
+		return hij.Hijack()
+	}
+	return nil, nil, errors.New("http.Hijacker is not available on writer")
 }
 
 // loggingHandler is the http.Handler implementation for LoggingHandlerTo and its friends
