@@ -2,6 +2,7 @@ package providers
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ type SessionState struct {
 	RefreshToken string
 	Email        string
 	User         string
+	UserUID      string
 }
 
 func (s *SessionState) IsExpired() bool {
@@ -72,7 +74,7 @@ func (s *SessionState) EncryptedString(c *cookie.Cipher) (string, error) {
 			return "", err
 		}
 	}
-	return fmt.Sprintf("%s|%s|%d|%s", s.userOrEmail(), a, s.ExpiresOn.Unix(), r), nil
+	return fmt.Sprintf("%s|%s|%s|%d|%s", s.userOrEmail(), s.UserUID, a, s.ExpiresOn.Unix(), r), nil
 }
 
 func DecodeSessionState(v string, c *cookie.Cipher) (s *SessionState, err error) {
@@ -85,31 +87,32 @@ func DecodeSessionState(v string, c *cookie.Cipher) (s *SessionState, err error)
 		return &SessionState{User: v}, nil
 	}
 
-	if len(chunks) != 4 {
-		err = fmt.Errorf("invalid number of fields (got %d expected 4)", len(chunks))
+	if len(chunks) != 5 {
+		err = fmt.Errorf("invalid number of fields (got %d expected 5)", len(chunks))
 		return
 	}
 
 	s = &SessionState{}
-	if c != nil && chunks[1] != "" {
-		s.AccessToken, err = c.Decrypt(chunks[1])
+	if c != nil && chunks[2] != "" {
+		s.AccessToken, err = c.Decrypt(chunks[2])
 		if err != nil {
 			return nil, err
 		}
 	}
-	if c != nil && chunks[3] != "" {
-		s.RefreshToken, err = c.Decrypt(chunks[3])
+	if c != nil && chunks[4] != "" {
+		s.RefreshToken, err = c.Decrypt(chunks[4])
 		if err != nil {
 			return nil, err
 		}
 	}
+	s.UserUID = chunks[1]
 	if u := chunks[0]; strings.Contains(u, "@") {
 		s.Email = u
 		s.User = strings.Split(u, "@")[0]
 	} else {
 		s.User = u
 	}
-	ts, _ := strconv.Atoi(chunks[2])
+	ts, _ := strconv.Atoi(chunks[3])
 	s.ExpiresOn = time.Unix(int64(ts), 0)
 	return
 }

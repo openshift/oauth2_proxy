@@ -220,6 +220,8 @@ An example [oauth-proxy.cfg](contrib/oauth-proxy.cfg.example) config file is in 
 Usage of oauth-proxy:
   -approval-prompt string: OAuth approval_prompt (default "force")
   -authenticated-emails-file string: authenticate against emails via file (one per line)
+  -authenticated-ids-file string: authenticate against user ids via file (one per line)
+  -authenticated-ids string: authenticate users with the specified id (may be given multiple times). Use * to authenticate any id
   -basic-auth-password string: the password to set when passing the HTTP Basic Auth header
   -bypass-auth-except-for value: provide authentication ONLY for request paths under proxy-prefix and those that match the given regex (may be given multiple times). Cannot be set with -skip-auth-regex
   -bypass-auth-for value: alias for -skip-auth-regex

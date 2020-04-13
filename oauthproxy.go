@@ -51,7 +51,7 @@ type OAuthProxy struct {
 	CookieHttpOnly bool
 	CookieExpire   time.Duration
 	CookieRefresh  time.Duration
-	Validator      func(string) bool
+	Validators     []func(providers.SessionState) bool
 
 	RobotsPath        string
 	PingPath          string
@@ -186,7 +186,7 @@ func NewWebSocketOrRestReverseProxy(u *url.URL, opts *Options, auth hmacauth.Hma
 	return &UpstreamProxy{u.Host, proxy, wsProxy, auth}
 }
 
-func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
+func NewOAuthProxy(opts *Options, validators []func(providers.SessionState) bool) *OAuthProxy {
 	serveMux := http.NewServeMux()
 	var auth hmacauth.HmacAuth
 	if sigData := opts.signatureData; sigData != nil {
@@ -258,7 +258,7 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		CookieHttpOnly: opts.CookieHttpOnly,
 		CookieExpire:   opts.CookieExpire,
 		CookieRefresh:  opts.CookieRefresh,
-		Validator:      validator,
+		Validators:     validators,
 
 		RobotsPath:        "/robots.txt",
 		PingPath:          fmt.Sprintf("%s/healthz", opts.ProxyPrefix),
@@ -327,8 +327,8 @@ func (p *OAuthProxy) redeemCode(host, code string) (s *providers.SessionState, e
 		return
 	}
 
-	if s.Email == "" {
-		s.Email, err = p.provider.GetEmailAddress(s)
+	if s.Email == "" || s.UserUID == "" {
+		s.Email, s.UserUID, err = p.provider.GetUserInfo(s)
 		if err != nil {
 			return
 		}
@@ -670,20 +670,31 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		redirect = "/"
 	}
 
-	// set cookie, or deny
-	if p.Validator(session.Email) && p.provider.ValidateGroup(session.Email) {
-		log.Printf("%s authentication complete %s", remoteAddr, session)
-		err := p.SaveSession(rw, req, session)
-		if err != nil {
-			log.Printf("%s %s", remoteAddr, err)
-			p.ErrorPage(rw, 500, "Internal Error", "Internal Error")
+	// check if every validator is OK with the prepared session
+	log.Printf("Checking session %s with validators", *session)
+	for _, validator := range p.Validators {
+		if !validator(*session) {
+			log.Printf("%s Permission Denied: %q is unauthorized", remoteAddr, session.Email)
+			p.ErrorPage(rw, 403, "Permission Denied", "Invalid Account")
 			return
 		}
-		http.Redirect(rw, req, redirect, 302)
-	} else {
+	}
+
+	if !p.provider.ValidateGroup(session.Email) {
 		log.Printf("%s Permission Denied: %q is unauthorized", remoteAddr, session.Email)
 		p.ErrorPage(rw, 403, "Permission Denied", "Invalid Account")
+		return
 	}
+
+	// save cookies
+	log.Printf("%s authentication complete %s", remoteAddr, session)
+	err = p.SaveSession(rw, req, session)
+	if err != nil {
+		log.Printf("%s %s", remoteAddr, err)
+		p.ErrorPage(rw, 500, "Internal Error", "Internal Error")
+		return
+	}
+	http.Redirect(rw, req, redirect, 302)
 }
 
 func (p *OAuthProxy) AuthenticateOnly(rw http.ResponseWriter, req *http.Request) {
@@ -749,11 +760,19 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 		}
 	}
 
-	if session != nil && session.Email != "" && !p.Validator(session.Email) {
-		log.Printf("%s Permission Denied: removing session %s", remoteAddr, session)
-		session = nil
-		saveSession = false
-		clearSession = true
+	if session != nil {
+		isValid := true
+		for _, v := range p.Validators {
+			if isValid = isValid && v(*session); !isValid {
+				break
+			}
+		}
+		if !isValid {
+			log.Printf("%s Permission Denied: removing session %s", remoteAddr, session)
+			session = nil
+			saveSession = false
+			clearSession = true
+		}
 	}
 
 	if saveSession && session != nil {

@@ -22,6 +22,7 @@ func main() {
 	flagSet := flag.NewFlagSet("oauth2_proxy", flag.ExitOnError)
 
 	emailDomains := StringArray{}
+	ids := StringArray{}
 	upstreams := StringArray{}
 	skipAuthRegex := StringArray{}
 	bypassAuthRegex := StringArray{}
@@ -57,6 +58,8 @@ func main() {
 	flagSet.String("debug-address", "", "[http://]<addr>:<port> or unix://<path> to listen on for debug and requests")
 
 	flagSet.Var(&emailDomains, "email-domain", "authenticate emails with the specified domain (may be given multiple times). Use * to authenticate any email")
+	flagSet.Var(&ids, "authenticated-ids", "authenticate users with the specified ids (may be given multiple times). Use * to authenticate any user")
+	flagSet.String("authenticated-ids-file", "", "authenticate against ids via file (one per line)")
 	flagSet.String("client-id", "", "the OAuth Client ID: ie: \"123456.apps.googleusercontent.com\"")
 	flagSet.String("client-secret", "", "the OAuth Client Secret")
 	flagSet.String("client-secret-file", "", "a file containing the client-secret")
@@ -140,7 +143,8 @@ func main() {
 	}
 
 	validator := NewValidator(opts.EmailDomains, opts.AuthenticatedEmailsFile)
-	oauthproxy := NewOAuthProxy(opts, validator)
+	usersValidator := NewUserValidator(opts.Ids, opts.AuthenticatedIdsFile)
+	oauthproxy := NewOAuthProxy(opts, []func(providers.SessionState) bool{validator, usersValidator})
 
 	if len(opts.EmailDomains) != 0 && opts.AuthenticatedEmailsFile == "" {
 		if len(opts.EmailDomains) > 1 {

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"github.com/openshift/oauth-proxy/providers"
 	"log"
 	"os"
 	"strings"
@@ -60,7 +61,7 @@ func (um *UserMap) LoadAuthenticatedEmailsFile() {
 }
 
 func newValidatorImpl(domains []string, usersFile string,
-	done <-chan bool, onUpdate func()) func(string) bool {
+	done <-chan bool, onUpdate func()) func(providers.SessionState) bool {
 	validUsers := NewUserMap(usersFile, done, onUpdate)
 
 	var allowAll bool
@@ -72,11 +73,13 @@ func newValidatorImpl(domains []string, usersFile string,
 		domains[i] = fmt.Sprintf("@%s", strings.ToLower(domain))
 	}
 
-	validator := func(email string) (valid bool) {
-		if email == "" {
+	validator := func(s providers.SessionState) (valid bool) {
+		log.Printf("Checking %s#%s", s.UserUID, s.User)
+		if s.Email == "" {
+			log.Printf("user email is empty. Returning %b", valid)
 			return
 		}
-		email = strings.ToLower(email)
+		email := strings.ToLower(s.Email)
 		for _, domain := range domains {
 			valid = valid || strings.HasSuffix(email, domain)
 		}
@@ -91,6 +94,6 @@ func newValidatorImpl(domains []string, usersFile string,
 	return validator
 }
 
-func NewValidator(domains []string, usersFile string) func(string) bool {
+func NewValidator(domains []string, usersFile string) func(providers.SessionState) bool {
 	return newValidatorImpl(domains, usersFile, nil, func() {})
 }

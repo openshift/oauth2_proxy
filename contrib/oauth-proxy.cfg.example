@@ -35,6 +35,13 @@
 #     "yourcompany.com"
 # ]
 
+## Authenticated IDs to allow authentication for the specified users
+## As an alternative `authenticated_ids_file` may be used
+## To authorize any user use "*"
+# authenticated_ids = [
+#     "f317d52e-955a-419d-bcd6-312482c64fd2"
+# ]
+
 ## The OAuth Client ID, Secret
 # client_id = "123456.apps.googleusercontent.com"
 # client_secret = ""

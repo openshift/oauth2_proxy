@@ -100,7 +100,7 @@ func (p *ProviderData) SessionFromCookie(v string, c *cookie.Cipher) (s *Session
 	return DecodeSessionState(v, c)
 }
 
-func (p *ProviderData) GetEmailAddress(s *SessionState) (string, error) {
+func (p *ProviderData) GetUserInfo(s *SessionState) (string, error) {
 	return "", errors.New("not implemented")
 }
 

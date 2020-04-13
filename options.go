@@ -43,6 +43,9 @@ type Options struct {
 	CustomTemplatesDir      string   `flag:"custom-templates-dir" cfg:"custom_templates_dir"`
 	Footer                  string   `flag:"footer" cfg:"footer"`
 
+	Ids                  []string `flag:"authenticated-ids" cfg:"authenticated_ids"`
+	AuthenticatedIdsFile string   `flag:"authenticated-ids-file" cfg:"authenticated_ids_file"`
+
 	OpenShiftSAR            string   `flag:"openshift-sar" cfg:"openshift_sar"`
 	OpenShiftSARByHost      string   `flag:"openshift-sar-by-host" cfg:"openshift_sar_by_host"`
 	OpenShiftReviewURL      string   `flag:"openshift-review-url" cfg:"openshift_review_url"`
@@ -162,6 +165,9 @@ func (o *Options) Validate(p providers.Provider) error {
 		if len(o.EmailDomains) == 0 {
 			o.EmailDomains = []string{"*"}
 		}
+		if len(o.Ids) == 0 {
+			o.Ids = []string{"*"}
+		}
 		if len(o.RedirectURL) == 0 {
 			o.RedirectURL = "https:///"
 		}
@@ -196,6 +202,9 @@ func (o *Options) Validate(p providers.Provider) error {
 	}
 	if o.AuthenticatedEmailsFile == "" && len(o.EmailDomains) == 0 && o.HtpasswdFile == "" {
 		msgs = append(msgs, "missing setting for email validation: email-domain or authenticated-emails-file required.\n      use email-domain=* to authorize all email addresses")
+	}
+	if o.AuthenticatedIdsFile == "" && len(o.Ids) == 0 && o.HtpasswdFile == "" {
+		msgs = append(msgs, "missing setting for ids validation: ids or authenticated-ids-file required.\n      use ids=* to authorize all users")
 	}
 
 	o.redirectURL, msgs = parseURL(o.RedirectURL, "redirect", msgs)

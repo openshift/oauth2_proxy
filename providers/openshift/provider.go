@@ -395,38 +395,50 @@ func (p *OpenShiftProvider) ValidateRequest(req *http.Request) (*providers.Sessi
 	}
 
 	parts := strings.SplitN(auth, " ", 2)
-	session := &providers.SessionState{User: response.User.GetName(), Email: response.User.GetName() + "@cluster.local"}
+	session := &providers.SessionState{User: response.User.GetName(), UserUID: response.User.GetUID(), Email: response.User.GetName() + "@cluster.local"}
 	if parts[0] == "Bearer" {
 		session.AccessToken = parts[1]
 	}
 	return session, nil
 }
 
-func (p *OpenShiftProvider) GetEmailAddress(s *providers.SessionState) (string, error) {
+func (p *OpenShiftProvider) GetUserInfo(s *providers.SessionState) (string, string, error) {
 	req, err := http.NewRequest("GET", p.ValidateURL.String(), nil)
 	if err != nil {
 		log.Printf("failed building request %s", err)
-		return "", fmt.Errorf("unable to build request to get user email info: %v", err)
+		return "", "", fmt.Errorf("unable to build request to get user info: %v", err)
 	}
 
 	client, err := p.newOpenShiftClient()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken))
 	json, err := request(client, req)
 	if err != nil {
-		return "", fmt.Errorf("unable to retrieve email address for user from token: %v", err)
+		return "", "", fmt.Errorf("unable to retrieve user info for user from token: %v", err)
 	}
-	name, err := json.Get("metadata").Get("name").String()
+	metadata := json.Get("metadata")
 	if err != nil {
-		return "", fmt.Errorf("user information has no name field: %v", err)
+		return "", "", fmt.Errorf("user information has no metadata field: %v", err)
+	}
+
+	name, err := metadata.Get("name").String()
+	if err != nil {
+		return "", "", fmt.Errorf("user information has no name field: %v", err)
 	}
 	if !strings.Contains(name, "@") {
 		name = name + "@cluster.local"
 	}
-	return name, nil
+
+	uid, err := metadata.Get("uid").String()
+	if err != nil {
+		// uid is missing for kube:admin user
+		uid = ""
+	}
+
+	return name, uid, nil
 }
 
 func (p *OpenShiftProvider) ReviewUser(name, accessToken, host string) error {
@@ -525,6 +537,7 @@ func (p *OpenShiftProvider) Redeem(redeemURL *url.URL, redirectURL, code string)
 		s = &providers.SessionState{
 			AccessToken: jsonResponse.AccessToken,
 		}
+		log.Printf("returning session with token only")
 		return
 	}
 
