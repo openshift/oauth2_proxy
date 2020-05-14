@@ -61,28 +61,29 @@ type OAuthProxy struct {
 	OAuthCallbackPath string
 	AuthOnlyPath      string
 
-	redirectURL         *url.URL // the url to receive requests at
-	provider            providers.Provider
-	ProxyPrefix         string
-	SignInMessage       string
-	HtpasswdFile        *HtpasswdFile
-	DisplayHtpasswdForm bool
-	serveMux            http.Handler
-	SetXAuthRequest     bool
-	PassBasicAuth       bool
-	SkipProviderButton  bool
-	PassUserHeaders     bool
-	BasicAuthPassword   string
-	PassAccessToken     bool
-	PassUserBearerToken bool
-	CookieCipher        *cookie.Cipher
-	authRegex           []string
-	skipAuthRegex       []string
-	skipAuthPreflight   bool
-	compiledAuthRegex   []*regexp.Regexp
-	compiledSkipRegex   []*regexp.Regexp
-	templates           *template.Template
-	Footer              string
+	redirectURL          *url.URL // the url to receive requests at
+	provider             providers.Provider
+	ProxyPrefix          string
+	SignInMessage        string
+	HtpasswdFile         *HtpasswdFile
+	DisplayHtpasswdForm  bool
+	serveMux             http.Handler
+	SetXAuthRequest      bool
+	PassBasicAuth        bool
+	SkipProviderButton   bool
+	PassUserHeaders      bool
+	BasicAuthPassword    string
+	PassAccessToken      bool
+	PassUserBearerToken  bool
+	DeleteTokenOnSignoff bool
+	CookieCipher         *cookie.Cipher
+	authRegex            []string
+	skipAuthRegex        []string
+	skipAuthPreflight    bool
+	compiledAuthRegex    []*regexp.Regexp
+	compiledSkipRegex    []*regexp.Regexp
+	templates            *template.Template
+	Footer               string
 }
 
 type UpstreamProxy struct {
@@ -268,25 +269,26 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		OAuthCallbackPath: fmt.Sprintf("%s/callback", opts.ProxyPrefix),
 		AuthOnlyPath:      fmt.Sprintf("%s/auth", opts.ProxyPrefix),
 
-		ProxyPrefix:         opts.ProxyPrefix,
-		provider:            opts.provider,
-		serveMux:            serveMux,
-		redirectURL:         redirectURL,
-		authRegex:           opts.BypassAuthExceptRegex,
-		skipAuthRegex:       opts.SkipAuthRegex,
-		skipAuthPreflight:   opts.SkipAuthPreflight,
-		compiledAuthRegex:   opts.CompiledAuthRegex,
-		compiledSkipRegex:   opts.CompiledSkipRegex,
-		SetXAuthRequest:     opts.SetXAuthRequest,
-		PassBasicAuth:       opts.PassBasicAuth,
-		PassUserHeaders:     opts.PassUserHeaders,
-		BasicAuthPassword:   opts.BasicAuthPassword,
-		PassAccessToken:     opts.PassAccessToken,
-		PassUserBearerToken: opts.PassUserBearerToken,
-		SkipProviderButton:  opts.SkipProviderButton,
-		CookieCipher:        cipher,
-		templates:           loadTemplates(opts.CustomTemplatesDir),
-		Footer:              opts.Footer,
+		ProxyPrefix:          opts.ProxyPrefix,
+		provider:             opts.provider,
+		serveMux:             serveMux,
+		redirectURL:          redirectURL,
+		authRegex:            opts.BypassAuthExceptRegex,
+		skipAuthRegex:        opts.SkipAuthRegex,
+		skipAuthPreflight:    opts.SkipAuthPreflight,
+		compiledAuthRegex:    opts.CompiledAuthRegex,
+		compiledSkipRegex:    opts.CompiledSkipRegex,
+		SetXAuthRequest:      opts.SetXAuthRequest,
+		DeleteTokenOnSignoff: opts.DeleteTokenOnSignoff,
+		PassBasicAuth:        opts.PassBasicAuth,
+		PassUserHeaders:      opts.PassUserHeaders,
+		BasicAuthPassword:    opts.BasicAuthPassword,
+		PassAccessToken:      opts.PassAccessToken,
+		PassUserBearerToken:  opts.PassUserBearerToken,
+		SkipProviderButton:   opts.SkipProviderButton,
+		CookieCipher:         cipher,
+		templates:            loadTemplates(opts.CustomTemplatesDir),
+		Footer:               opts.Footer,
 	}
 }
 
@@ -594,6 +596,13 @@ func (p *OAuthProxy) SignIn(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (p *OAuthProxy) SignOut(rw http.ResponseWriter, req *http.Request) {
+	if p.DeleteTokenOnSignoff {
+		if session, _, err := p.LoadCookiedSession(req); err == nil {
+			p.provider.DeleteToken(session)
+		} else {
+			log.Printf("Unable to delete token during signout: %v", err)
+		}
+	}
 	p.ClearSessionCookie(rw, req)
 	http.Redirect(rw, req, "/", 302)
 }

@@ -142,3 +142,7 @@ func (p *ProviderData) GetRedeemURL() (*url.URL, error) {
 
 	return nil, fmt.Errorf("no redeem endpoint was configured")
 }
+
+func (p *ProviderData) DeleteToken(s *SessionState) error {
+	return p.DeleteToken(s)
+}

@@ -83,6 +83,8 @@ type Options struct {
 	ValidateURL    string `flag:"validate-url" cfg:"validate_url"`
 	Scope          string `flag:"scope" cfg:"scope"`
 	ApprovalPrompt string `flag:"approval-prompt" cfg:"approval_prompt"`
+	//DeleteTokenOnSignoff on sign_off
+	DeleteTokenOnSignoff bool `flag:"delete-token-on-signoff" cfg:"delete_token_on_signoff"`
 
 	RequestLogging bool `flag:"request-logging" cfg:"request_logging"`
 
@@ -105,26 +107,27 @@ type SignatureData struct {
 
 func NewOptions() *Options {
 	return &Options{
-		ProxyPrefix:         "/oauth2",
-		ProxyWebSockets:     true,
-		HttpAddress:         "127.0.0.1:4180",
-		HttpsAddress:        ":443",
-		UpstreamFlush:       time.Duration(5) * time.Millisecond,
-		DisplayHtpasswdForm: true,
-		CookieName:          "_oauth2_proxy",
-		CookieSecure:        true,
-		CookieHttpOnly:      true,
-		CookieExpire:        time.Duration(168) * time.Hour,
-		CookieRefresh:       time.Duration(0),
-		SetXAuthRequest:     false,
-		SkipAuthPreflight:   false,
-		PassBasicAuth:       true,
-		PassUserHeaders:     true,
-		PassAccessToken:     false,
-		PassUserBearerToken: false,
-		PassHostHeader:      true,
-		ApprovalPrompt:      "force",
-		RequestLogging:      true,
+		ProxyPrefix:          "/oauth2",
+		ProxyWebSockets:      true,
+		HttpAddress:          "127.0.0.1:4180",
+		HttpsAddress:         ":443",
+		UpstreamFlush:        time.Duration(5) * time.Millisecond,
+		DisplayHtpasswdForm:  true,
+		CookieName:           "_oauth2_proxy",
+		CookieSecure:         true,
+		CookieHttpOnly:       true,
+		CookieExpire:         time.Duration(168) * time.Hour,
+		CookieRefresh:        time.Duration(0),
+		SetXAuthRequest:      false,
+		SkipAuthPreflight:    false,
+		PassBasicAuth:        true,
+		PassUserHeaders:      true,
+		PassAccessToken:      false,
+		PassUserBearerToken:  false,
+		PassHostHeader:       true,
+		ApprovalPrompt:       "force",
+		DeleteTokenOnSignoff: false,
+		RequestLogging:       true,
 	}
 }
 

@@ -568,6 +568,27 @@ func (p *OpenShiftProvider) GetRedeemURL() (*url.URL, error) {
 	return redeemURL, err
 }
 
+func (p *OpenShiftProvider) DeleteToken(s *providers.SessionState) error {
+	path := getKubeAPIURLWithPath("/apis/oauth.openshift.io/v1/oauthaccesstokens/" + s.AccessToken)
+	req, err := http.NewRequest("DELETE", path.String(), nil)
+	if err != nil {
+		log.Printf("failed building request %s", err)
+		return fmt.Errorf("unable to build request to delete user's token: %v", err)
+	}
+
+	client, err := p.newOpenShiftClient()
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", p.ClientSecret))
+	_, err = request(client, req)
+	if err != nil {
+		return fmt.Errorf("unable to delete token for %q: %v", s.User, err)
+	}
+	return nil
+}
+
 // discoverOpenshiftOAuth returns the urls of the login and code redeem endpoitns
 // it receives from the /.well-known/oauth-authorization-server endpoint
 func discoverOpenShiftOAuth(client *http.Client) (*url.URL, *url.URL, error) {

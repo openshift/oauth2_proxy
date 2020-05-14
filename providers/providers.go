@@ -23,6 +23,7 @@ type Provider interface {
 	ValidateRequest(*http.Request) (*SessionState, error)
 	GetLoginURL() (*url.URL, error)
 	GetRedeemURL() (*url.URL, error)
+	DeleteToken(*SessionState) error
 }
 
 // ErrPermissionDenied may be returned from Redeem() to indicate the user is not allowed to login.
