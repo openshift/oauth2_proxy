@@ -190,7 +190,7 @@ func deserializeStrings(in string) ([]string, error) {
 	return ret, nil
 }
 
-func (s *DelegatingAuthenticationOptions) getClientConfig() (*rest.Config, error) {
+func (s *DelegatingAuthenticationOptions) GetClientConfig() (*rest.Config, error) {
 	var clientConfig *rest.Config
 	var err error
 	if len(s.RemoteKubeConfigFile) > 0 {
@@ -216,7 +216,7 @@ func (s *DelegatingAuthenticationOptions) getClientConfig() (*rest.Config, error
 }
 
 func (s *DelegatingAuthenticationOptions) newTokenAccessReview() (authenticationclient.TokenReviewInterface, error) {
-	clientConfig, err := s.getClientConfig()
+	clientConfig, err := s.GetClientConfig()
 	if err != nil {
 		return nil, err
 	}

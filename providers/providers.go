@@ -16,6 +16,7 @@ type Provider interface {
 	Redeem(*url.URL, string, string) (*SessionState, error)
 	ValidateGroup(string) bool
 	ValidateSessionState(*SessionState) bool
+	DeleteSessionToken(*SessionState) error
 	GetLoginRedirectURL(loginURL url.URL, redirectURI, state string) string
 	RefreshSessionIfNeeded(*SessionState) (bool, error)
 	SessionFromCookie(string, *cookie.Cipher) (*SessionState, error)

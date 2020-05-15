@@ -68,7 +68,7 @@ func (s *DelegatingAuthorizationOptions) ToAuthorizationConfig() (authorizerfact
 	return ret, nil
 }
 
-func (s *DelegatingAuthorizationOptions) newSubjectAccessReview() (authorizationclient.SubjectAccessReviewInterface, error) {
+func (s *DelegatingAuthorizationOptions) GetClientConfig() (*rest.Config, error) {
 	var clientConfig *rest.Config
 	var err error
 	if len(s.RemoteKubeConfigFile) > 0 {
@@ -89,6 +89,15 @@ func (s *DelegatingAuthorizationOptions) newSubjectAccessReview() (authorization
 	// set high qps/burst limits since this will effectively limit API server responsiveness
 	clientConfig.QPS = 200
 	clientConfig.Burst = 400
+
+	return clientConfig, nil
+}
+
+func (s *DelegatingAuthorizationOptions) newSubjectAccessReview() (authorizationclient.SubjectAccessReviewInterface, error) {
+	clientConfig, err := s.GetClientConfig()
+	if err != nil {
+		return nil, err
+	}
 
 	client, err := authorizationclient.NewForConfig(clientConfig)
 	if err != nil {

@@ -3,7 +3,9 @@ package openshift
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,6 +22,7 @@ import (
 
 	"github.com/bitly/go-simplejson"
 
+	oauthv1client "github.com/openshift/client-go/oauth/clientset/versioned/typed/oauth/v1"
 	oscrypto "github.com/openshift/library-go/pkg/crypto"
 
 	"github.com/openshift/oauth-proxy/providers"
@@ -27,10 +30,14 @@ import (
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
+	"k8s.io/client-go/rest"
 )
+
+const sha256Prefix = "sha256~"
 
 func emptyURL(u *url.URL) bool {
 	return u == nil || u.String() == ""
@@ -51,6 +58,9 @@ type OpenShiftProvider struct {
 	reviews       []string
 	paths         recordsByPath
 	hostreviews   map[string][]string
+
+	// anonymousKubeconfig - deep copy for client calls
+	anonymousKubeconfig *rest.Config
 
 	// httpClientCache stores httpClient objects so that new client does not have to
 	// be created on each request just to prevent CAs content changed
@@ -308,6 +318,13 @@ func (p *OpenShiftProvider) Complete(data *providers.ProviderData, reviewURL *ur
 
 	p.ProviderData = data
 	p.ReviewURL = reviewURL
+
+	// get anonymous kubeconfig to copy for client calls
+	var err error
+	p.anonymousKubeconfig, err = p.getAnonymousClient()
+	if err != nil {
+		return fmt.Errorf("failed to get anonymous kubeconfig: %w", err)
+	}
 
 	if len(p.paths) > 0 {
 		log.Printf("Delegation of authentication and authorization to OpenShift is enabled for bearer tokens and client certificates.")
@@ -577,6 +594,26 @@ func (p *OpenShiftProvider) GetRedeemURL() (*url.URL, error) {
 	return redeemURL, err
 }
 
+func (p *OpenShiftProvider) DeleteSessionToken(session *providers.SessionState) error {
+	if len(session.AccessToken) == 0 {
+		return nil
+	}
+
+	userConfig := rest.CopyConfig(p.anonymousKubeconfig)
+	userConfig.BearerToken = session.AccessToken
+
+	oauthClient, err := oauthv1client.NewForConfig(userConfig)
+	if err != nil {
+		return fmt.Errorf("failed to contstruct openshift oauth client")
+	}
+
+	if err := oauthClient.OAuthAccessTokens().Delete(getTokenObjectName(session.AccessToken), &metav1.DeleteOptions{}); err != nil {
+		log.Printf("failed to remove token for user %q", session.User)
+	}
+
+	return nil
+}
+
 // discoverOpenshiftOAuth returns the urls of the login and code redeem endpoitns
 // it receives from the /.well-known/oauth-authorization-server endpoint
 func discoverOpenShiftOAuth(client *http.Client) (*url.URL, *url.URL, error) {
@@ -651,4 +688,24 @@ func getKubeAPIURLWithPath(path string) *url.URL {
 	}
 
 	return ret
+}
+
+func (p *OpenShiftProvider) getAnonymousClient() (*rest.Config, error) {
+	clientConfig, err := p.AuthenticationOptions.GetClientConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return rest.AnonymousClientConfig(clientConfig), nil
+}
+
+// getTokenObjectName returns the oauthaccesstokens object name for the given raw token,
+// i.e. the sha256 hash prefixed with "sha256~".
+func getTokenObjectName(tokenName string) string {
+	if !strings.HasPrefix(tokenName, sha256Prefix) {
+		return tokenName
+	}
+	strippedName := strings.TrimPrefix(tokenName, sha256Prefix)
+	h := sha256.Sum256([]byte(strippedName))
+	return sha256Prefix + base64.RawURLEncoding.EncodeToString(h[0:])
 }

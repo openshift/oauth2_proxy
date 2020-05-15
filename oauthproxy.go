@@ -601,6 +601,14 @@ func (p *OAuthProxy) SignIn(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (p *OAuthProxy) SignOut(rw http.ResponseWriter, req *http.Request) {
+	var err error
+	if session, _, err := p.LoadCookiedSession(req); err == nil && session != nil {
+		err = p.provider.DeleteSessionToken(session)
+	}
+
+	if err != nil {
+		log.Printf("failed to delete user's token during sign out: %v", err)
+	}
 	p.ClearSessionCookie(rw, req)
 	redirectURL := "/"
 	if len(p.LogoutRedirectURL) > 0 {

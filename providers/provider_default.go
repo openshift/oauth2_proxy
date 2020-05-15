@@ -122,6 +122,10 @@ func (p *ProviderData) ValidateSessionState(s *SessionState) bool {
 	return validateToken(p, s.AccessToken, nil)
 }
 
+func (p *ProviderData) DeleteSessionToken(s *SessionState) error {
+	return p.DeleteSessionToken(s)
+}
+
 // RefreshSessionIfNeeded
 func (p *ProviderData) RefreshSessionIfNeeded(s *SessionState) (bool, error) {
 	return false, nil
