@@ -10,13 +10,15 @@ require (
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/golang/groupcache v0.0.0-20191227052852-215e87163ea7 // indirect
 	github.com/mreiferson/go-options v0.0.0-20161229190002-77551d20752b
+	github.com/openshift/api v0.0.0-20200414152312-3e8f22fb0b56 // indirect
+	github.com/openshift/client-go v0.0.0-20200116152001-92a2713fa240
 	github.com/openshift/library-go v0.0.0-20190731063920-9fac0f4cee90
 	github.com/yhat/wsutil v0.0.0-20170731153501-1d66fa95c997
-	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
+	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553
 	golang.org/x/text v0.3.3 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
-	k8s.io/api v0.17.0
-	k8s.io/apimachinery v0.17.0
-	k8s.io/apiserver v0.17.0
-	k8s.io/client-go v0.17.0
+	k8s.io/api v0.17.1
+	k8s.io/apimachinery v0.17.1
+	k8s.io/apiserver v0.17.1
+	k8s.io/client-go v0.17.1
 )
