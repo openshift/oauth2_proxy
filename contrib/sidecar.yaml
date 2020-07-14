@@ -8,6 +8,13 @@ items:
     name: proxy
     annotations:
       serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"proxy"}}'
+# Create a ConfigMap which OpenShift will populate with trusted certificates
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    labels:
+      config.openshift.io/inject-trusted-cabundle: "true"
+    name: ocp-ca-bundle
 # Create a secure connection to the proxy via a route
 - apiVersion: v1
   kind: Route
@@ -63,9 +70,13 @@ items:
           - --tls-cert=/etc/tls/private/tls.crt
           - --tls-key=/etc/tls/private/tls.key
           - --cookie-secret=SECRET
+          - --openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          - --openshift-ca=/etc/ocp-injected-certs/tls-ca-bundle.pem
           volumeMounts:
           - mountPath: /etc/tls/private
             name: proxy-tls
+          - mountPath: /etc/ocp-injected-certs
+            name: ocp-injected-certs
 
         - name: app
           image: openshift/hello-openshift:latest
@@ -73,3 +84,9 @@ items:
         - name: proxy-tls
           secret:
             secretName: proxy-tls
+        - name: ocp-injected-certs
+          configMap:
+            name: ocp-ca-bundle
+            items:
+            - key: ca-bundle.crt
+              path: tls-ca-bundle.pem

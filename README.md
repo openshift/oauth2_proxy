@@ -147,6 +147,8 @@ to build the correct `--client-id`, and the contents of
 One or more paths to CA certificates that should be used when connecting to the OpenShift master.
 If none are provided, the proxy will default to using `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`.
 
+You can use this flag to trust the OpenShift OAuth certificate if the [default ingress certificate is changed](https://docs.openshift.com/container-platform/4.3/authentication/certificates/replacing-default-ingress-certificate.html). The new certificate can be added to the container directly, or via a [ConfigMap populated by OpenShift](https://docs.openshift.com/container-platform/4.3/networking/configuring-a-custom-pki.html#certificate-injection-using-operators_configuring-a-custom-pki). For example, you might mount the ConfigMap to `/etc/ocp-injected-certs/tls-ca-bundle.pem`, and add this flag to the argument list of the container: `--openshift-ca=/etc/ocp-injected-certs/tls-ca-bundle.pem`.
+
 
 ### Discovering the OAuth configuration of an OpenShift cluster
 
