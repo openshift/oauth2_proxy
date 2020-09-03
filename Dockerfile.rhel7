@@ -1,9 +1,9 @@
-FROM registry.svc.ci.openshift.org/openshift/release:golang-1.13 AS builder
+FROM registry.svc.ci.openshift.org/openshift/release:golang-1.14 AS builder
 WORKDIR  /go/src/github.com/openshift/oauth-proxy
 COPY . .
 RUN go build .
 
-FROM registry.svc.ci.openshift.org/ocp/4.4:base
+FROM registry.svc.ci.openshift.org/ocp/4.6:base
 COPY --from=builder /go/src/github.com/openshift/oauth-proxy/oauth-proxy /usr/bin/oauth-proxy
 ENTRYPOINT ["/usr/bin/oauth-proxy"]
 LABEL io.k8s.display-name="OpenShift OAuth Proxy" \
