@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -20,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
 	projectclient "github.com/openshift/client-go/project/clientset/versioned"
@@ -264,28 +264,12 @@ func TestOAuthProxyE2E(t *testing.T) {
 				t.Fatalf("setup: error waiting for pod to run: %s", err)
 			}
 
-			// Find the service CA for the client trust store
-			secrets, err := kubeClient.CoreV1().Secrets(ns).List(testCtx, metav1.ListOptions{})
-			if err != nil {
-				t.Fatalf("setup: error listing secrets: %s", err)
-			}
-
-			var openshiftPemCA []byte
-			for _, s := range secrets.Items {
-				cert, ok := s.Data["ca.crt"]
-				if !ok {
-					continue
-				}
-				openshiftPemCA = cert
-				break
-			}
-			if openshiftPemCA == nil {
-				t.Fatalf("setup: could not find openshift CA from secrets")
-			}
+			openshiftTransport, err := rest.TransportFor(testConfig)
+			require.NoError(t, err)
 
 			host := "https://" + proxyRouteHost + "/oauth/start"
 			// Wait for the route, we get an EOF if we move along too fast
-			err = waitUntilRouteIsReady([][]byte{caPem, openshiftPemCA}, host)
+			err = waitUntilRouteIsReady(t, openshiftTransport, host)
 			if err != nil {
 				t.Fatalf("setup: error waiting for route availability: %s", err)
 			}
@@ -312,11 +296,11 @@ func TestOAuthProxyE2E(t *testing.T) {
 				execCmd("oc", []string{"adm", "policy", "remove-role-from-user", "admin", user, "-n", ns}, "")
 			}()
 
-			waitForHealthzCheck([][]byte{caPem, openshiftPemCA}, "https://"+proxyRouteHost)
+			waitForHealthzCheck(t, openshiftTransport, "https://"+proxyRouteHost)
 
-			check3DESDisabled(t, [][]byte{caPem, openshiftPemCA}, "https://"+proxyRouteHost)
+			check3DESDisabled(t, "https://"+proxyRouteHost, caPem)
 
-			err = confirmOAuthFlow(proxyRouteHost, tc.accessSubPath, [][]byte{caPem, openshiftPemCA}, user, tc.pageResult, tc.expectedErr, tc.bypass)
+			err = testOAuthProxyLogin(t, openshiftTransport, proxyRouteHost, tc.accessSubPath, user, "password", tc.pageResult, tc.expectedErr, tc.bypass)
 
 			if err == nil && len(tc.expectedErr) > 0 {
 				t.Errorf("expected error '%s', but test passed", tc.expectedErr)
@@ -338,31 +322,18 @@ func TestOAuthProxyE2E(t *testing.T) {
 	}
 }
 
-func submitOAuthForm(client *http.Client, response *http.Response, user, expectedErr string) (*http.Response, error) {
-	responseBytes, err := ioutil.ReadAll(response.Body)
+func submitOAuthForm(client *http.Client, response *http.Response, user, password, expectedErr string) (*http.Response, error) {
+	bodyParsed, err := html.Parse(response.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	responseBuffer := bytes.NewBuffer(responseBytes)
-
-	body, err := html.Parse(responseBuffer)
-	if err != nil {
-		return nil, err
-	}
-
-	forms := getElementsByTagName(body, "form")
+	forms := getElementsByTagName(bodyParsed, "form")
 	if len(forms) != 1 {
-		errMsg := "expected OpenShift form"
-		// Return the expected error if it's found amongst the text elements
-		if expectedErr != "" {
-			checkBuffer := bytes.NewBuffer(responseBytes)
-			parsed, err := html.Parse(checkBuffer)
-			if err != nil {
-				return nil, err
-			}
-
-			textNodes := getTextNodes(parsed)
+		errMsg := "expected a single OpenShift form"
+		if len(expectedErr) != 0 {
+			// Return the expected error if it's found amongst the text elements
+			textNodes := getTextNodes(bodyParsed)
 			for i := range textNodes {
 				if textNodes[i].Data == expectedErr {
 					errMsg = expectedErr
@@ -370,9 +341,10 @@ func submitOAuthForm(client *http.Client, response *http.Response, user, expecte
 			}
 		}
 		return nil, fmt.Errorf(errMsg)
+
 	}
 
-	formReq, err := newRequestFromForm(forms[0], response.Request.URL, user)
+	formReq, err := newRequestFromForm(forms[0], response.Request.URL, user, password)
 	if err != nil {
 		return nil, err
 	}
@@ -385,56 +357,82 @@ func submitOAuthForm(client *http.Client, response *http.Response, user, expecte
 	return postResp, nil
 }
 
-func confirmOAuthFlow(host, subPath string, cas [][]byte, user, expectedPageResult, expectedErr string, expectedBypass bool) error {
-	// Set up the client cert store
-	client, err := newHTTPSClient(cas)
-	if err != nil {
-		return err
-	}
-
-	startUrl := "https://" + host + subPath
-	resp, err := getResponse(startUrl, client)
+func confirmOAuthFlow(client *http.Client, requestURL, user, password, expectedErr string, expectBypass bool) error {
+	resp, err := client.Get(requestURL)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
-	if !expectedBypass {
-		// OpenShift login
-		loginResp, err := submitOAuthForm(client, resp, user, expectedErr)
-		if err != nil {
-			return err
-		}
-		defer loginResp.Body.Close()
-
-		// authorization grant form
-		grantResp, err := submitOAuthForm(client, loginResp, user, expectedErr)
-		if err != nil {
-			return err
-		}
-
-		defer grantResp.Body.Close()
-		resp = grantResp
+	if resp.StatusCode != 200 {
+		r, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("expected to be redirected to the oauth-server login page, got %q; page content\n%s", resp.Status, r)
 	}
 
-	accessRespBody, err := ioutil.ReadAll(resp.Body)
+	// OpenShift login page
+	loginResp, err := submitOAuthForm(client, resp, user, password, expectedErr)
 	if err != nil {
-		return nil
+		return err
+	}
+	defer loginResp.Body.Close()
+	if resp.StatusCode != 200 {
+		r, _ := ioutil.ReadAll(loginResp.Body)
+		return fmt.Errorf("failed to submit the login form: %q\n page content\n%s", resp.Status, r)
 	}
 
-	if string(accessRespBody) != expectedPageResult {
-		return fmt.Errorf("did not reach upstream site")
+	// authorization grant form; no password should be expected
+	grantResp, err := submitOAuthForm(client, loginResp, user, "", expectedErr)
+	if err != nil {
+		return err
+	}
+	defer grantResp.Body.Close()
+	if resp.StatusCode != 200 {
+		r, _ := ioutil.ReadAll(grantResp.Body)
+		return fmt.Errorf("failed to submit the grant form: %q\n pageC content\n%s", resp.Status, r)
 	}
 
 	return nil
 }
 
-func check3DESDisabled(t *testing.T, cas [][]byte, url string) {
-	pool := x509.NewCertPool()
-	for _, ca := range cas {
-		if !pool.AppendCertsFromPEM(ca) {
-			t.Fatal("error loading CA for client config")
+func testOAuthProxyLogin(t *testing.T, transport http.RoundTripper, host, subPath, user, password, expectedResult, expectedErr string, expectBypass bool) error {
+	client := newHTTPSClient(t, transport)
+
+	if !expectBypass {
+		if err := confirmOAuthFlow(client, "https://"+host+subPath, user, password, expectedErr, expectBypass); err != nil {
+			return err
 		}
+	}
+
+	authenticateResp, err := client.Get("https://" + host + subPath)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve the base page")
+	}
+	defer authenticateResp.Body.Close()
+
+	// we should be authenticated now
+	if authenticateResp.StatusCode != 200 {
+		r, _ := ioutil.ReadAll(authenticateResp.Body)
+		return fmt.Errorf("expected to be authenticated, got status %q, page:\n%s", authenticateResp.Status, r)
+	}
+
+	if authenticateResp.Request.Host != host {
+		return fmt.Errorf("did not reach upstream site")
+	}
+
+	authenticatedContent, err := ioutil.ReadAll(authenticateResp.Body)
+	require.NoError(t, err)
+
+	if !strings.Contains(string(authenticatedContent), expectedResult) {
+		// don't print the whole returned page, it makes the test result unreadable
+		t.Fatalf("expected authenticated page to contain %s, but it's missing", expectedResult)
+	}
+
+	return nil
+}
+
+func check3DESDisabled(t *testing.T, proxyURL string, proxyCA []byte) {
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(proxyCA) {
+		t.Fatalf("error loading CA for client config")
 	}
 
 	jar, _ := cookiejar.New(nil)
@@ -447,17 +445,16 @@ func check3DESDisabled(t *testing.T, cas [][]byte, url string) {
 				tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
 				tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
 			},
+			// TLS 1.3 uses specific cipher suites and ignores the cipher suite config above
+			MaxVersion: tls.VersionTLS12,
 		},
 	}
-
 	client := &http.Client{Transport: tr, Jar: jar}
-	resp, err := getResponse(url, client)
-
+	resp, err := getResponse(proxyURL, client)
 	if err == nil {
 		resp.Body.Close()
 		t.Fatal("expected to fail with weak ciphers")
 	}
-
 	if !strings.Contains(err.Error(), "handshake failure") {
 		t.Fatalf("expected TLS handshake error with weak ciphers, got: %v", err)
 	}

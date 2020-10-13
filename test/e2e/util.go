@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -43,7 +42,6 @@ import (
 	routev1client "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
 	userclients "github.com/openshift/client-go/user/clientset/versioned"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
-	oscrypto "github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/resource/retry"
 )
 
@@ -122,11 +120,8 @@ func waitForPodDeletion(c kubernetes.Interface, podName, namespace string) error
 	return wait.PollImmediate(Poll, defaultTimeout, podDeleted(c, podName, namespace))
 }
 
-func waitForHealthzCheck(cas [][]byte, url string) error {
-	client, err := newHTTPSClient(cas)
-	if err != nil {
-		return err
-	}
+func waitForHealthzCheck(t *testing.T, transport http.RoundTripper, url string) error {
+	client := newHTTPSClient(t, transport)
 	return wait.PollImmediate(time.Second, 50*time.Second, func() (bool, error) {
 		resp, err := getResponse(url+"/oauth/healthz", client)
 		if err != nil {
@@ -169,11 +164,8 @@ func podRunning(c kubernetes.Interface, podName, namespace string) wait.Conditio
 	}
 }
 
-func waitUntilRouteIsReady(cas [][]byte, url string) error {
-	client, err := newHTTPSClient(cas)
-	if err != nil {
-		return err
-	}
+func waitUntilRouteIsReady(t *testing.T, transport http.RoundTripper, url string) error {
+	client := newHTTPSClient(t, transport)
 	return wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
 		resp, err := getResponse(url, client)
 		if err != nil {
@@ -249,23 +241,12 @@ func encodeKey(key *rsa.PrivateKey) ([]byte, error) {
 	return keyBytes.Bytes(), nil
 }
 
-func newHTTPSClient(cas [][]byte) (*http.Client, error) {
-	pool := x509.NewCertPool()
-	for i := range cas {
-		if !pool.AppendCertsFromPEM(cas[i]) {
-			return nil, fmt.Errorf("error loading CA for client config")
-		}
-	}
+func newHTTPSClient(t *testing.T, transport http.RoundTripper) *http.Client {
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
 
-	jar, _ := cookiejar.New(nil)
-	tr := &http.Transport{
-		MaxIdleConns:    10,
-		IdleConnTimeout: 30 * time.Second,
-		TLSClientConfig: oscrypto.SecureTLSConfig(&tls.Config{RootCAs: pool}),
-	}
-
-	client := &http.Client{Transport: tr, Jar: jar}
-	return client, nil
+	client := &http.Client{Transport: transport, Jar: jar}
+	return client
 }
 
 func createCAandCertSet(host string) ([]byte, []byte, []byte, error) {
@@ -368,7 +349,7 @@ func getAttr(element *html.Node, attrName string) (string, bool) {
 }
 
 // newRequestFromForm builds a request that simulates submitting the given form.
-func newRequestFromForm(form *html.Node, currentURL *url.URL, user string) (*http.Request, error) {
+func newRequestFromForm(form *html.Node, currentURL *url.URL, user, password string) (*http.Request, error) {
 	var (
 		reqMethod string
 		reqURL    *url.URL
@@ -409,7 +390,7 @@ func newRequestFromForm(form *html.Node, currentURL *url.URL, user string) (*htt
 					}
 				case "password":
 					if name == "password" {
-						formData.Add(name, "foo")
+						formData.Add(name, password)
 					}
 				case "submit":
 					// If this is a submit input, only add the value of the first one.

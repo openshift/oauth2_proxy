@@ -9,8 +9,11 @@ require (
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/mreiferson/go-options v1.0.0
+	github.com/openshift/api v0.0.0-20200827090112-c05698d102cf
 	github.com/openshift/build-machinery-go v0.0.0-20200819073603-48aa266c95f7
+	github.com/openshift/client-go v0.0.0-20200827190008-3062137373b5
 	github.com/openshift/library-go v0.0.0-20200918101923-1e4c94603efe
+	github.com/stretchr/testify v1.4.0
 	github.com/yhat/wsutil v0.0.0-20170731153501-1d66fa95c997
 	golang.org/x/net v0.0.0-20200904194848-62affa334b73
 	k8s.io/api v0.19.2
