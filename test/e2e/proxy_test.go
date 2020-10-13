@@ -30,125 +30,61 @@ func TestOAuthProxyE2E(t *testing.T) {
 		expectedErr    string
 		accessSubPath  string
 		pageResult     string
-		backendEnvs    []string
 		bypass         bool
 	}{
 		"basic": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--skip-provider-button",
-				"--cookie-secret=SECRET",
 			},
-			backendEnvs: []string{},
 			expectedErr: "",
 			pageResult:  "Hello OpenShift!\n",
 		},
 		// Tests a scope that is not valid for SA OAuth client use
 		"scope-full": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				"--scope=user:full",
 			},
-			backendEnvs: []string{},
 			expectedErr: "403 Permission Denied",
 			pageResult:  "Hello OpenShift!\n",
 		},
 		"sar-ok": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--openshift-sar={"namespace":"` + ns + `","resource":"services","verb":"list"}`,
 			},
-			backendEnvs: []string{},
 			expectedErr: "",
 			pageResult:  "Hello OpenShift!\n",
 		},
 		"sar-fail": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--openshift-sar={"namespace":"other","resource":"services","verb":"list"}`,
 			},
-			backendEnvs: []string{},
 			expectedErr: "did not reach upstream site",
 			pageResult:  "Hello OpenShift!\n",
 		},
 		"sar-multi-ok": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--openshift-sar=[{"namespace":"` + ns + `","resource":"services","verb":"list"}, {"namespace":"` + ns + `","resource":"routes","verb":"list"}]`,
 			},
-			backendEnvs: []string{},
 			expectedErr: "",
 			pageResult:  "Hello OpenShift!\n",
 		},
 		"sar-multi-fail": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--openshift-sar=[{"namespace":"` + ns + `","resource":"services","verb":"list"}, {"namespace":"other","resource":"pods","verb":"list"}]`,
 			},
-			backendEnvs: []string{},
 			expectedErr: "did not reach upstream site",
 			pageResult:  "Hello OpenShift!\n",
 		},
 		"skip-auth-regex-bypass-foo": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--skip-auth-regex=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/foo",
 			expectedErr:   "",
 			pageResult:    "Hello OpenShift! /foo\n",
@@ -156,18 +92,9 @@ func TestOAuthProxyE2E(t *testing.T) {
 		},
 		"skip-auth-regex-protect-bar": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--skip-auth-regex=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/bar",
 			expectedErr:   "",
 			pageResult:    "Hello OpenShift! /bar\n",
@@ -175,18 +102,9 @@ func TestOAuthProxyE2E(t *testing.T) {
 		// test --bypass-auth-for (alias for --skip-auth-regex); expect to bypass auth for /foo
 		"bypass-auth-foo": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--bypass-auth-for=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/foo",
 			expectedErr:   "",
 			pageResult:    "Hello OpenShift! /foo\n",
@@ -195,18 +113,9 @@ func TestOAuthProxyE2E(t *testing.T) {
 		// test --bypass-auth-except-for; expect to auth /foo
 		"bypass-auth-except-try-protected": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--bypass-auth-except-for=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/foo",
 			expectedErr:   "",
 			pageResult:    "Hello OpenShift! /foo\n",
@@ -214,18 +123,9 @@ func TestOAuthProxyE2E(t *testing.T) {
 		// test --bypass-auth-except-for; expect to bypass auth for paths other than /foo
 		"bypass-auth-except-try-bypassed": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--bypass-auth-except-for=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/bar",
 			expectedErr:   "",
 			pageResult:    "Hello OpenShift! /bar\n",
@@ -323,7 +223,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 				t.Fatalf("setup: error creating certificate configMap: %s", err)
 			}
 
-			oauthProxyPod, err := kubeClientSet.CoreV1().Pods(ns).Create(testCtx, newOAuthProxyPod(image, backendImage, tc.oauthProxyArgs, tc.backendEnvs), metav1.CreateOptions{})
+			oauthProxyPod, err := kubeClientSet.CoreV1().Pods(ns).Create(testCtx, newOAuthProxyPod(image, backendImage, tc.oauthProxyArgs), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("setup: error creating oauth-proxy pod with image '%s' and args '%v': %s", image, tc.oauthProxyArgs, err)
 			}

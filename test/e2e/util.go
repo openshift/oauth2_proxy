@@ -538,15 +538,26 @@ func newOAuthProxyConfigMap(namespace string, pemCA, pemServerCert, pemServerKey
 	}
 }
 
-func newOAuthProxyPod(proxyImage, backendImage string, proxyArgs, backendEnvs []string) *corev1.Pod {
+func newOAuthProxyPod(proxyImage, backendImage string, extraProxyArgs []string, envVars ...string) *corev1.Pod {
 	backendEnvVars := []corev1.EnvVar{}
-	for _, env := range backendEnvs {
+	for _, env := range envVars {
 		e := strings.Split(env, "=")
 		if len(e) <= 1 {
 			continue
 		}
 		backendEnvVars = append(backendEnvVars, corev1.EnvVar{Name: e[0], Value: e[1]})
 	}
+
+	proxyArgs := append([]string{
+		"--provider=openshift",
+		"--openshift-service-account=proxy",
+		"--https-address=:8443",
+		"--tls-cert=/etc/tls/private/tls.crt",
+		"--tls-key=/etc/tls/private/tls.key",
+		"--tls-client-ca=/etc/tls/private/ca.crt",
+		"--cookie-secret=SECRET",
+		"--skip-provider-button",
+	}, extraProxyArgs...)
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "proxy",
