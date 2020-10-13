@@ -52,7 +52,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 				"--upstream=http://localhost:8080",
 			},
 			expectedErr: "",
-			pageResult:  "Hello OpenShift!\n",
+			pageResult:  "URI: /",
 		},
 		// Tests a scope that is not valid for SA OAuth client use
 		"scope-full": {
@@ -61,7 +61,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 				"--scope=user:full",
 			},
 			expectedErr: "403 Permission Denied",
-			pageResult:  "Hello OpenShift!\n",
 		},
 		"sar-ok": {
 			oauthProxyArgs: []string{
@@ -69,7 +68,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 				`--openshift-sar={"namespace":"` + ns + `","resource":"services","verb":"list"}`,
 			},
 			expectedErr: "",
-			pageResult:  "Hello OpenShift!\n",
+			pageResult:  "URI: /",
 		},
 		"sar-fail": {
 			oauthProxyArgs: []string{
@@ -77,7 +76,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 				`--openshift-sar={"namespace":"other","resource":"services","verb":"list"}`,
 			},
 			expectedErr: "did not reach upstream site",
-			pageResult:  "Hello OpenShift!\n",
 		},
 		"sar-multi-ok": {
 			oauthProxyArgs: []string{
@@ -85,7 +83,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 				`--openshift-sar=[{"namespace":"` + ns + `","resource":"services","verb":"list"}, {"namespace":"` + ns + `","resource":"routes","verb":"list"}]`,
 			},
 			expectedErr: "",
-			pageResult:  "Hello OpenShift!\n",
+			pageResult:  "URI: /",
 		},
 		"sar-multi-fail": {
 			oauthProxyArgs: []string{
@@ -93,7 +91,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 				`--openshift-sar=[{"namespace":"` + ns + `","resource":"services","verb":"list"}, {"namespace":"other","resource":"pods","verb":"list"}]`,
 			},
 			expectedErr: "did not reach upstream site",
-			pageResult:  "Hello OpenShift!\n",
 		},
 		"skip-auth-regex-bypass-foo": {
 			oauthProxyArgs: []string{
@@ -102,7 +99,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 			},
 			accessSubPath: "/foo",
 			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /foo\n",
+			pageResult:    "URI: /foo\n",
 			bypass:        true,
 		},
 		"skip-auth-regex-protect-bar": {
@@ -112,7 +109,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 			},
 			accessSubPath: "/bar",
 			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /bar\n",
+			pageResult:    "URI: /bar",
 		},
 		// test --bypass-auth-for (alias for --skip-auth-regex); expect to bypass auth for /foo
 		"bypass-auth-foo": {
@@ -122,7 +119,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 			},
 			accessSubPath: "/foo",
 			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /foo\n",
+			pageResult:    "URI: /foo\n",
 			bypass:        true,
 		},
 		// test --bypass-auth-except-for; expect to auth /foo
@@ -133,7 +130,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 			},
 			accessSubPath: "/foo",
 			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /foo\n",
+			pageResult:    "URI: /foo\n",
 		},
 		// test --bypass-auth-except-for; expect to bypass auth for paths other than /foo
 		"bypass-auth-except-try-bypassed": {
@@ -143,7 +140,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 			},
 			accessSubPath: "/bar",
 			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /bar\n",
+			pageResult:    "URI: /bar",
 			bypass:        true,
 		},
 		// TODO: find or write a containerized test http server that allows simple TLS config
@@ -178,8 +175,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 		// },
 	}
 
-	backendImage := os.Getenv("HELLO_IMAGE")
-
 	// Get the image from a pod that we know uses oauth-proxy to wrap
 	// its endpoints with OpenShift auth
 	// TODO: is there a better way?
@@ -201,6 +196,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 
 	t.Logf("test image: %s, test namespace: %s", image, ns)
 
+	backendImage := "nginxdemos/nginx-hello:plain-text"
 	for tcName, tc := range oauthProxyTests {
 		runOnly := os.Getenv("TEST")
 		if len(runOnly) > 0 && runOnly != tcName {
