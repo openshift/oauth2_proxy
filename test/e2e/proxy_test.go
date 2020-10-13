@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -191,6 +192,12 @@ func TestOAuthProxyE2E(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, image)
+
+	// get rid of kubeadmin user to remove the additional step of choosing an idp
+	err = kubeClient.CoreV1().Secrets("kube-system").Delete(context.TODO(), "kubeadmin", metav1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		t.Fatalf("couldn't remove the kubeadmin user: %v", err)
+	}
 
 	t.Logf("test image: %s, test namespace: %s", image, ns)
 
