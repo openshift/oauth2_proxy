@@ -177,8 +177,20 @@ func TestOAuthProxyE2E(t *testing.T) {
 		// },
 	}
 
-	image := os.Getenv("TEST_IMAGE")
 	backendImage := os.Getenv("HELLO_IMAGE")
+
+	// Get the image from a pod that we know uses oauth-proxy to wrap
+	// its endpoints with OpenShift auth
+	// TODO: is there a better way?
+	alertmanagerPod, err := kubeClient.CoreV1().Pods("openshift-monitoring").Get(testCtx, "alertmanager-main-0", metav1.GetOptions{})
+	require.NoError(t, err)
+	var image string
+	for _, c := range alertmanagerPod.Spec.Containers {
+		if c.Name == "alertmanager-proxy" {
+			image = c.Image
+		}
+	}
+	require.NotEmpty(t, image)
 
 	t.Logf("test image: %s, test namespace: %s", image, ns)
 
