@@ -21,8 +21,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	configclient "github.com/openshift/client-go/config/clientset/versioned"
 	projectclient "github.com/openshift/client-go/project/clientset/versioned"
 	routeclient "github.com/openshift/client-go/route/clientset/versioned"
+	userclient "github.com/openshift/client-go/user/clientset/versioned"
 )
 
 func TestOAuthProxyE2E(t *testing.T) {
@@ -31,10 +33,13 @@ func TestOAuthProxyE2E(t *testing.T) {
 	testConfig := NewClientConfigForTest(t)
 	kubeClient, err := kubernetes.NewForConfig(testConfig)
 	require.NoError(t, err)
+	configClient, err := configclient.NewForConfig(testConfig)
+	require.NoError(t, err)
 	projectClient, err := projectclient.NewForConfig(testConfig)
 	require.NoError(t, err)
 	routeClient, err := routeclient.NewForConfig(testConfig)
 	require.NoError(t, err)
+	userClient, err := userclient.NewForConfig(testConfig)
 	ns := CreateTestProject(t, kubeClient, projectClient)
 	defer func() {
 		if len(os.Getenv("DEBUG_TEST")) > 0 {
@@ -197,14 +202,27 @@ func TestOAuthProxyE2E(t *testing.T) {
 		t.Fatalf("couldn't remove the kubeadmin user: %v", err)
 	}
 
+	users, idpCleanup := createTestIdP(t, kubeClient, configClient.ConfigV1().OAuths(), userClient, ns, len(oauthProxyTests))
+	defer func() {
+		if len(os.Getenv("DEBUG_TEST")) == 0 {
+			idpCleanup()
+		}
+	}()
+
+	// wait for the IdP to be honored in the oauth-server
+	WaitForClusterOperatorStatus(t, configClient.ConfigV1(), nil, pbool(true), nil)
+	WaitForClusterOperatorStatus(t, configClient.ConfigV1(), pbool(true), pbool(false), nil)
+
 	t.Logf("test image: %s, test namespace: %s", image, ns)
 
 	backendImage := "nginxdemos/nginx-hello:plain-text"
+	currentTestIdx := 0 // to pick the current user so that each test gets a fresh grant
 	for tcName, tc := range oauthProxyTests {
 		runOnly := os.Getenv("TEST")
 		if len(runOnly) > 0 && runOnly != tcName {
 			continue
 		}
+
 		t.Run(fmt.Sprintf("setting up e2e tests %s", tcName), func(t *testing.T) {
 			_, err := kubeClient.CoreV1().ServiceAccounts(ns).Create(testCtx, newOAuthProxySA(), metav1.CreateOptions{})
 			if err != nil {
@@ -272,7 +290,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 				t.Fatalf("setup: error waiting for route availability: %s", err)
 			}
 
-			user := randLogin()
+			user := users[currentTestIdx]
 			// For SAR tests the random user needs the admin role for this namespace.
 			out, err := execCmd("oc", []string{"adm", "policy", "add-role-to-user", "admin", user, "-n", ns, "--rolebinding-name", "sar-" + user}, "")
 			if err != nil {
@@ -314,6 +332,9 @@ func TestOAuthProxyE2E(t *testing.T) {
 				}
 			}
 		})
+
+		// increase the current user
+		currentTestIdx++
 	}
 }
 

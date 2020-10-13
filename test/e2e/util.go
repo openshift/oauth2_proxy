@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	mathrand "math/rand"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -37,10 +36,15 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	cmdapi "k8s.io/client-go/tools/clientcmd/api"
 
+	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
+	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	projectclient "github.com/openshift/client-go/project/clientset/versioned"
 	routev1client "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
+	userclients "github.com/openshift/client-go/user/clientset/versioned"
+	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 	oscrypto "github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/library-go/pkg/operator/resource/retry"
 )
 
 const (
@@ -363,16 +367,6 @@ func getAttr(element *html.Node, attrName string) (string, bool) {
 	return "", false
 }
 
-// Varying the login name for each test ensures we test a fresh grant
-func randLogin() string {
-	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	b := make([]rune, 5)
-	for i := range b {
-		b[i] = letters[mathrand.Intn(len(letters))]
-	}
-	return "developer" + string(b)
-}
-
 // newRequestFromForm builds a request that simulates submitting the given form.
 func newRequestFromForm(form *html.Node, currentURL *url.URL, user string) (*http.Request, error) {
 	var (
@@ -452,6 +446,92 @@ func newRequestFromForm(form *html.Node, currentURL *url.URL, user string) (*htt
 
 	req.Header = reqHeader
 	return req, nil
+}
+
+// Varying the login name for each test ensures we test a fresh grant
+func createTestIdP(
+	t *testing.T,
+	kubeClient *kubernetes.Clientset,
+	oauthClient configv1client.OAuthInterface,
+	userClientSet *userclients.Clientset,
+	nsName string,
+	numUsers int,
+) ([]string, func()) {
+	oauthConfig, err := oauthClient.Get(context.TODO(), "cluster", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	var users []string
+	for i := 0; i < numUsers; i++ {
+		users = append(users, fmt.Sprintf("testuser%d", i))
+	}
+
+	htpasswdSecretName := nsName + "htpasswd"
+	kubeClient.CoreV1().Secrets("openshift-config").Create(context.TODO(),
+		&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: htpasswdSecretName,
+			},
+			Data: map[string][]byte{
+				"htpasswd": []byte(strings.Join(users, ":$2y$05$0Fk2s.0FbLy0FZ82JAqajOV/kbT/wqKX5/QFKgps6J69J2jY6r5ZG\n")), // bcrypt of 'password'
+			},
+		},
+		metav1.CreateOptions{},
+	)
+
+	oauthConfig.Spec.IdentityProviders = append(
+		oauthConfig.Spec.IdentityProviders, configv1.IdentityProvider{
+			Name: nsName,
+			IdentityProviderConfig: configv1.IdentityProviderConfig{
+				Type: "HTPasswd",
+				HTPasswd: &configv1.HTPasswdIdentityProvider{
+					FileData: configv1.SecretNameReference{
+						Name: htpasswdSecretName,
+					},
+				},
+			},
+		},
+	)
+
+	_, err = oauthClient.Update(context.TODO(), oauthConfig, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	cleanup := func() {
+		err := kubeClient.CoreV1().Secrets("openshift-config").Delete(context.TODO(), nsName+"htpasswd", metav1.DeleteOptions{})
+		if err != nil {
+			t.Logf("failed to delete secret openshift-config/%shtpasswd: %v", nsName, err)
+		}
+		oauthConfig, err := oauthClient.Get(context.TODO(), "cluster", metav1.GetOptions{})
+		if err != nil {
+			t.Logf("failed to get the oauth/cluster config during cleanup: %v", err)
+		}
+		for i := range oauthConfig.Spec.IdentityProviders {
+			if providers := oauthConfig.Spec.IdentityProviders; providers[i].Name == nsName {
+				oauthConfig.Spec.IdentityProviders = deleteProvider(providers, i)
+				break
+			}
+		}
+		_, err = oauthClient.Update(context.TODO(), oauthConfig, metav1.UpdateOptions{})
+		if err != nil {
+			t.Logf("failed to remove the test IdP from oauth/cluster: %s", err)
+		}
+
+		for i := 0; i < numUsers; i++ {
+			username := fmt.Sprintf("testuser%d", i)
+			identityName := fmt.Sprintf("%s:%s", nsName, username)
+			if err := userClientSet.UserV1().Users().Delete(context.TODO(), username, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+				t.Logf("failed to remove user: %s", username)
+			}
+			if err := userClientSet.UserV1().Identities().Delete(context.TODO(), identityName, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+				t.Logf("failed to remove identity: %s", identityName)
+			}
+		}
+	}
+	return users, cleanup
+}
+
+func deleteProvider(provider []configv1.IdentityProvider, idx int) []configv1.IdentityProvider {
+	provider[idx] = provider[len(provider)-1]
+	return provider[:len(provider)-1]
 }
 
 // execCmd executes a command and returns the stdout + error, if any
@@ -552,6 +632,7 @@ func createOAuthProxyRoute(t *testing.T, routeClient routev1client.RouteInterfac
 }
 
 func pint32(i int32) *int32 { return &i }
+func pbool(b bool) *bool    { return &b }
 
 func newOAuthProxySA() *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
@@ -674,4 +755,37 @@ func NewClientConfigForTest(t *testing.T) *rest.Config {
 
 	require.NoError(t, err)
 	return config
+}
+
+func WaitForClusterOperatorStatus(t *testing.T, client configv1client.ConfigV1Interface, available, progressing, degraded *bool) error {
+	status := map[configv1.ClusterStatusConditionType]bool{} // struct for easy printing the conditions
+	return wait.PollImmediate(time.Second, 5*time.Minute, func() (bool, error) {
+		clusterOperator, err := client.ClusterOperators().Get(context.TODO(), "authentication", metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			t.Logf("clusteroperators.config.openshift.io/authentication: %v", err)
+			return false, nil
+		}
+		if retry.IsHTTPClientError(err) {
+			t.Logf("clusteroperators.config.openshift.io/authentication: %v", err)
+			return false, nil
+		}
+		availableStatusIsMatch, progressingStatusIsMatch, degradedStatusIsMatch := true, true, true
+		conditions := clusterOperator.Status.Conditions
+		status[configv1.OperatorAvailable] = v1helpers.IsStatusConditionTrue(conditions, configv1.OperatorAvailable)
+		status[configv1.OperatorProgressing] = v1helpers.IsStatusConditionTrue(conditions, configv1.OperatorProgressing)
+		status[configv1.OperatorDegraded] = v1helpers.IsStatusConditionTrue(conditions, configv1.OperatorDegraded)
+		if available != nil {
+			availableStatusIsMatch = status[configv1.OperatorAvailable] == *available
+		}
+		if progressing != nil {
+			progressingStatusIsMatch = status[configv1.OperatorProgressing] == *progressing
+		}
+		if degraded != nil {
+			degradedStatusIsMatch = status[configv1.OperatorDegraded] == *degraded
+		}
+
+		t.Logf("current authentication operator status: %v", status)
+		done := availableStatusIsMatch && progressingStatusIsMatch && degradedStatusIsMatch
+		return done, nil
+	})
 }
