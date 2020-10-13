@@ -5,7 +5,6 @@ PROJECT_REPO=github.com/openshift/oauth-proxy
 DOCKER_REPO=localhost:5000
 
 KUBECONFIG=~/admin.kubeconfig
-TEST_NAMESPACE=myproject
 
 REV=$(git rev-parse --short HEAD)
 TEST_IMAGE=${DOCKER_REPO}/oauth-proxy-${REV}:latest
@@ -42,7 +41,6 @@ if [ "${1}" == "clusterup" ]; then
 	sudo cp /var/lib/origin/openshift.local.config/master/admin.kubeconfig ~/
 	sudo chmod 777 ${KUBECONFIG}
 	oc login -u developer -p pass
-	oc project ${TEST_NAMESPACE}
 	oc status
 fi
 

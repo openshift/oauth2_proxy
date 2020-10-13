@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-	mathrand "math/rand"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
@@ -15,16 +14,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	projectclient "github.com/openshift/client-go/project/clientset/versioned"
 )
 
 func TestOAuthProxyE2E(t *testing.T) {
 	testCtx := context.Background()
 
-	ns := os.Getenv("TEST_NAMESPACE")
+	testConfig := NewClientConfigForTest(t)
+	kubeClient, err := kubernetes.NewForConfig(testConfig)
+	require.NoError(t, err)
+	projectClient, err := projectclient.NewForConfig(testConfig)
+	require.NoError(t, err)
+	ns := CreateTestProject(t, kubeClient, projectClient)
+	defer func() {
+		if len(os.Getenv("DEBUG_TEST")) > 0 {
+			return
+		}
+		kubeClient.CoreV1().Namespaces().Delete(testCtx, ns, metav1.DeleteOptions{})
+	}()
+
 	oauthProxyTests := map[string]struct {
 		oauthProxyArgs []string
 		expectedErr    string
@@ -166,16 +180,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 	image := os.Getenv("TEST_IMAGE")
 	backendImage := os.Getenv("HELLO_IMAGE")
 
-	mathrand.Seed(time.Now().UTC().UnixNano())
-	kubeConfig, err := loadConfig(os.Getenv("KUBECONFIG"), os.Getenv("KUBECONTEXT"))
-	if err != nil {
-		t.Fatalf("error loading kubeconfig: '%s', ctx: '%s', err: %s", os.Getenv("KUBECONFIG"), os.Getenv("KUBECONTEXT"), err)
-	}
-	kubeClientSet, err := kubernetes.NewForConfig(kubeConfig)
-	if err != nil {
-		t.Fatalf("error generating kube client: %s", err)
-	}
-
 	t.Logf("test image: %s, test namespace: %s", image, ns)
 
 	for tcName, tc := range oauthProxyTests {
@@ -184,7 +188,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 			continue
 		}
 		t.Run(fmt.Sprintf("setting up e2e tests %s", tcName), func(t *testing.T) {
-			_, err := kubeClientSet.CoreV1().ServiceAccounts(ns).Create(testCtx, newOAuthProxySA(), metav1.CreateOptions{})
+			_, err := kubeClient.CoreV1().ServiceAccounts(ns).Create(testCtx, newOAuthProxySA(), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("setup: error creating SA: %s", err)
 			}
@@ -212,29 +216,29 @@ func TestOAuthProxyE2E(t *testing.T) {
 				t.Fatalf("setup: error creating upstream TLS certs: %s", err)
 			}
 
-			_, err = kubeClientSet.CoreV1().Services(ns).Create(testCtx, newOAuthProxyService(), metav1.CreateOptions{})
+			_, err = kubeClient.CoreV1().Services(ns).Create(testCtx, newOAuthProxyService(), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("setup: error creating service: %s", err)
 			}
 
 			// configMap provides oauth-proxy with the certificates we created above
-			_, err = kubeClientSet.CoreV1().ConfigMaps(ns).Create(testCtx, newOAuthProxyConfigMap(ns, caPem, serviceCert, serviceKey, upstreamCA, upstreamCert, upstreamKey), metav1.CreateOptions{})
+			_, err = kubeClient.CoreV1().ConfigMaps(ns).Create(testCtx, newOAuthProxyConfigMap(ns, caPem, serviceCert, serviceKey, upstreamCA, upstreamCert, upstreamKey), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("setup: error creating certificate configMap: %s", err)
 			}
 
-			oauthProxyPod, err := kubeClientSet.CoreV1().Pods(ns).Create(testCtx, newOAuthProxyPod(image, backendImage, tc.oauthProxyArgs), metav1.CreateOptions{})
+			oauthProxyPod, err := kubeClient.CoreV1().Pods(ns).Create(testCtx, newOAuthProxyPod(image, backendImage, tc.oauthProxyArgs), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("setup: error creating oauth-proxy pod with image '%s' and args '%v': %s", image, tc.oauthProxyArgs, err)
 			}
 
-			err = waitForPodRunningInNamespace(kubeClientSet, oauthProxyPod)
+			err = waitForPodRunningInNamespace(kubeClient, oauthProxyPod)
 			if err != nil {
 				t.Fatalf("setup: error waiting for pod to run: %s", err)
 			}
 
 			// Find the service CA for the client trust store
-			secrets, err := kubeClientSet.CoreV1().Secrets(ns).List(testCtx, metav1.ListOptions{})
+			secrets, err := kubeClient.CoreV1().Secrets(ns).List(testCtx, metav1.ListOptions{})
 			if err != nil {
 				t.Fatalf("setup: error listing secrets: %s", err)
 			}
@@ -272,12 +276,12 @@ func TestOAuthProxyE2E(t *testing.T) {
 					t.Fatalf("skipping cleanup step for test '%s' and stopping on command", tcName)
 				}
 				t.Logf("cleaning up test %s", tcName)
-				kubeClientSet.CoreV1().Pods(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
-				kubeClientSet.CoreV1().Services(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
+				kubeClient.CoreV1().Pods(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
+				kubeClient.CoreV1().Services(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
 				deleteTestRoute("proxy-route", ns)
-				kubeClientSet.CoreV1().ConfigMaps(ns).Delete(testCtx, "proxy-certs", metav1.DeleteOptions{})
-				kubeClientSet.CoreV1().ServiceAccounts(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
-				waitForPodDeletion(kubeClientSet, oauthProxyPod.Name, ns)
+				kubeClient.CoreV1().ConfigMaps(ns).Delete(testCtx, "proxy-certs", metav1.DeleteOptions{})
+				kubeClient.CoreV1().ServiceAccounts(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
+				waitForPodDeletion(kubeClient, oauthProxyPod.Name, ns)
 				execCmd("oc", []string{"adm", "policy", "remove-role-from-user", "admin", user, "-n", ns}, "")
 			}()
 

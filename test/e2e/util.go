@@ -19,20 +19,25 @@ import (
 	"net/url"
 	"os/exec"
 	"strings"
+	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/storage/names"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/tools/clientcmd/api"
+	cmdapi "k8s.io/client-go/tools/clientcmd/api"
 
+	projectclient "github.com/openshift/client-go/project/clientset/versioned"
 	oscrypto "github.com/openshift/library-go/pkg/crypto"
 )
 
@@ -43,26 +48,55 @@ const (
 	defaultTimeout = 30 * time.Second
 )
 
-func restClientConfig(config, context string) (*api.Config, error) {
-	if config == "" {
-		return nil, fmt.Errorf("Config file must be specified to load client config")
-	}
-	c, err := clientcmd.LoadFromFile(config)
-	if err != nil {
-		return nil, fmt.Errorf("error loading config: %v", err.Error())
-	}
-	if context != "" {
-		c.CurrentContext = context
-	}
-	return c, nil
+func CreateTestProject(t *testing.T, kubeClient kubernetes.Interface, projectClient *projectclient.Clientset) string {
+	newNamespace := names.SimpleNameGenerator.GenerateName("e2e-oauth-proxy-")
+
+	// e2e.Logf("Creating project %q", newNamespace)
+	_, err := kubeClient.CoreV1().Namespaces().Create(context.Background(),
+		&corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: newNamespace,
+				Labels: map[string]string{
+					"test": "oauth-proxy",
+				},
+			},
+		}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	err = waitForSelfSAR(1*time.Second, 60*time.Second, kubeClient, authorizationv1.SelfSubjectAccessReviewSpec{
+		ResourceAttributes: &authorizationv1.ResourceAttributes{
+			Namespace: newNamespace,
+			Verb:      "create",
+			Group:     "",
+			Resource:  "pods",
+		},
+	})
+	require.NoError(t, err)
+
+	return newNamespace
 }
 
-func loadConfig(config, context string) (*rest.Config, error) {
-	c, err := restClientConfig(config, context)
+func waitForSelfSAR(interval, timeout time.Duration, c kubernetes.Interface, selfSAR authorizationv1.SelfSubjectAccessReviewSpec) error {
+	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
+		res, err := c.AuthorizationV1().SelfSubjectAccessReviews().Create(
+			context.Background(),
+			&authorizationv1.SelfSubjectAccessReview{
+				Spec: selfSAR,
+			},
+			metav1.CreateOptions{},
+		)
+		if err != nil {
+			return false, err
+		}
+
+		return res.Status.Allowed, nil
+	})
+
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to wait for SelfSAR (ResourceAttributes: %#v, NonResourceAttributes: %#v), err: %v", selfSAR.ResourceAttributes, selfSAR.NonResourceAttributes, err)
 	}
-	return clientcmd.NewDefaultClientConfig(*c, &clientcmd.ConfigOverrides{}).ClientConfig()
+
+	return nil
 }
 
 // Waits default amount of time (PodStartTimeout) for the specified pod to become running.
@@ -614,4 +648,17 @@ func newOAuthProxyPod(proxyImage, backendImage string, extraProxyArgs []string, 
 			},
 		},
 	}
+}
+
+// NewClientConfigForTest returns a config configured to connect to the api server
+func NewClientConfigForTest(t *testing.T) *rest.Config {
+	loader := clientcmd.NewDefaultClientConfigLoadingRules()
+	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loader, &clientcmd.ConfigOverrides{ClusterInfo: cmdapi.Cluster{InsecureSkipTLSVerify: true}})
+	config, err := clientConfig.ClientConfig()
+	if err == nil {
+		t.Logf("Found configuration for host %v.\n", config.Host)
+	}
+
+	require.NoError(t, err)
+	return config
 }
