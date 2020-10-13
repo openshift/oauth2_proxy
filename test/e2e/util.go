@@ -37,7 +37,9 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	cmdapi "k8s.io/client-go/tools/clientcmd/api"
 
+	routev1 "github.com/openshift/api/route/v1"
 	projectclient "github.com/openshift/client-go/project/clientset/versioned"
+	routev1client "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
 	oscrypto "github.com/openshift/library-go/pkg/crypto"
 )
 
@@ -516,29 +518,40 @@ func newOAuthProxyService() *corev1.Service {
 	}
 }
 
-var routeYaml = `apiVersion: v1
-kind: Route
-metadata:
-  labels:
-    app: proxy
-  name: proxy-route
-spec:
-  port:
-    targetPort: 8443
-  to:
-    kind: Service
-    name: proxy
-    weight: 100
-  wildcardPolicy: None
-  tls:
-    termination: passthrough
-`
-
 // create a route using oc create directly
-func newOAuthProxyRoute(namespace string) error {
-	_, err := execCmd("oc", []string{"create", "-n", namespace, "-f", "-"}, routeYaml)
-	return err
+func createOAuthProxyRoute(t *testing.T, routeClient routev1client.RouteInterface) string {
+	route, err := routeClient.Create(
+		context.TODO(),
+		&routev1.Route{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "proxy-route",
+				Labels: map[string]string{
+					"app": "proxy",
+				},
+			},
+			Spec: routev1.RouteSpec{
+				Port: &routev1.RoutePort{
+					TargetPort: intstr.FromInt(8443),
+				},
+				To: routev1.RouteTargetReference{
+					Kind:   "Service",
+					Name:   "proxy",
+					Weight: pint32(100),
+				},
+				WildcardPolicy: routev1.WildcardPolicyNone,
+				TLS: &routev1.TLSConfig{
+					Termination: routev1.TLSTerminationPassthrough,
+				},
+			},
+		},
+		metav1.CreateOptions{},
+	)
+	require.NoError(t, err, "setup: error creating route: %s", err)
+
+	return route.Spec.Host
 }
+
+func pint32(i int32) *int32 { return &i }
 
 func newOAuthProxySA() *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{

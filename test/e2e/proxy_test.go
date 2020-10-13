@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	projectclient "github.com/openshift/client-go/project/clientset/versioned"
+	routeclient "github.com/openshift/client-go/route/clientset/versioned"
 )
 
 func TestOAuthProxyE2E(t *testing.T) {
@@ -31,6 +32,8 @@ func TestOAuthProxyE2E(t *testing.T) {
 	kubeClient, err := kubernetes.NewForConfig(testConfig)
 	require.NoError(t, err)
 	projectClient, err := projectclient.NewForConfig(testConfig)
+	require.NoError(t, err)
+	routeClient, err := routeclient.NewForConfig(testConfig)
 	require.NoError(t, err)
 	ns := CreateTestProject(t, kubeClient, projectClient)
 	defer func() {
@@ -208,16 +211,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 				t.Fatalf("setup: error creating SA: %s", err)
 			}
 
-			err = newOAuthProxyRoute(ns)
-			if err != nil {
-				t.Fatalf("setup: error creating route: %s", err)
-			}
-
-			// Find the exposed route hostname that we will be doing client actions against
-			proxyRouteHost, err := getRouteHost("proxy-route", ns)
-			if err != nil {
-				t.Fatalf("setup: error finding route host: %s", err)
-			}
+			proxyRouteHost := createOAuthProxyRoute(t, routeClient.RouteV1().Routes(ns))
 
 			// Create the TLS certificate set for the client and service (with the route hostname attributes)
 			caPem, serviceCert, serviceKey, err := createCAandCertSet(proxyRouteHost)
