@@ -59,8 +59,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 			oauthProxyArgs: []string{
 				"--upstream=http://localhost:8080",
 			},
-			expectedErr: "",
-			pageResult:  "URI: /",
+			pageResult: "URI: /",
 		},
 		// Tests a scope that is not valid for SA OAuth client use
 		"scope-full": {
@@ -75,8 +74,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 				"--upstream=http://localhost:8080",
 				`--openshift-sar={"namespace":"` + ns + `","resource":"services","verb":"list"}`,
 			},
-			expectedErr: "",
-			pageResult:  "URI: /",
+			pageResult: "URI: /",
 		},
 		"sar-fail": {
 			oauthProxyArgs: []string{
@@ -90,8 +88,7 @@ func TestOAuthProxyE2E(t *testing.T) {
 				"--upstream=http://localhost:8080",
 				`--openshift-sar=[{"namespace":"` + ns + `","resource":"services","verb":"list"}, {"namespace":"` + ns + `","resource":"routes","verb":"list"}]`,
 			},
-			expectedErr: "",
-			pageResult:  "URI: /",
+			pageResult: "URI: /",
 		},
 		"sar-multi-fail": {
 			oauthProxyArgs: []string{
@@ -106,7 +103,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 				`--skip-auth-regex=^/foo`,
 			},
 			accessSubPath: "/foo",
-			expectedErr:   "",
 			pageResult:    "URI: /foo\n",
 			bypass:        true,
 		},
@@ -116,7 +112,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 				`--skip-auth-regex=^/foo`,
 			},
 			accessSubPath: "/bar",
-			expectedErr:   "",
 			pageResult:    "URI: /bar",
 		},
 		// test --bypass-auth-for (alias for --skip-auth-regex); expect to bypass auth for /foo
@@ -126,7 +121,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 				`--bypass-auth-for=^/foo`,
 			},
 			accessSubPath: "/foo",
-			expectedErr:   "",
 			pageResult:    "URI: /foo\n",
 			bypass:        true,
 		},
@@ -137,7 +131,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 				`--bypass-auth-except-for=^/foo`,
 			},
 			accessSubPath: "/foo",
-			expectedErr:   "",
 			pageResult:    "URI: /foo\n",
 		},
 		// test --bypass-auth-except-for; expect to bypass auth for paths other than /foo
@@ -147,7 +140,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 				`--bypass-auth-except-for=^/foo`,
 			},
 			accessSubPath: "/bar",
-			expectedErr:   "",
 			pageResult:    "URI: /bar",
 			bypass:        true,
 		},
@@ -159,7 +151,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 		// 		"--upstream-ca=/etc/tls/private/upstreamca.crt",
 		// 	},
 		// 	backendEnvs: []string{"HELLO_TLS_CERT=/etc/tls/private/upstream.crt", "HELLO_TLS_KEY=/etc/tls/private/upstream.key"},
-		// 	expectedErr: "",
 		// 	pageResult:  "URI: /",
 		// },
 		// // --upstream-ca set multiple times, with one matching CA
@@ -170,7 +161,6 @@ func TestOAuthProxyE2E(t *testing.T) {
 		// 		"--upstream-ca=/etc/tls/private/ca.crt",
 		// 	},
 		// 	backendEnvs: []string{"HELLO_TLS_CERT=/etc/tls/private/upstream.crt", "HELLO_TLS_KEY=/etc/tls/private/upstream.key"},
-		// 	expectedErr: "",
 		// 	pageResult:  "URI: /",
 		// },
 		// // no --upstream-ca set, so there's no valid TLS connection between proxy and upstream
