@@ -1,13 +1,11 @@
 package e2e
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-	mathrand "math/rand"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
@@ -15,314 +13,213 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+
+	configclient "github.com/openshift/client-go/config/clientset/versioned"
+	projectclient "github.com/openshift/client-go/project/clientset/versioned"
+	routeclient "github.com/openshift/client-go/route/clientset/versioned"
+	userclient "github.com/openshift/client-go/user/clientset/versioned"
 )
 
 func TestOAuthProxyE2E(t *testing.T) {
 	testCtx := context.Background()
 
-	ns := os.Getenv("TEST_NAMESPACE")
+	testConfig := NewClientConfigForTest(t)
+	kubeClient, err := kubernetes.NewForConfig(testConfig)
+	require.NoError(t, err)
+	configClient, err := configclient.NewForConfig(testConfig)
+	require.NoError(t, err)
+	projectClient, err := projectclient.NewForConfig(testConfig)
+	require.NoError(t, err)
+	routeClient, err := routeclient.NewForConfig(testConfig)
+	require.NoError(t, err)
+	userClient, err := userclient.NewForConfig(testConfig)
+	ns := CreateTestProject(t, kubeClient, projectClient)
+	defer func() {
+		if len(os.Getenv("DEBUG_TEST")) > 0 {
+			return
+		}
+		kubeClient.CoreV1().Namespaces().Delete(testCtx, ns, metav1.DeleteOptions{})
+	}()
+
 	oauthProxyTests := map[string]struct {
 		oauthProxyArgs []string
 		expectedErr    string
 		accessSubPath  string
 		pageResult     string
-		backendEnvs    []string
 		bypass         bool
 	}{
 		"basic": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--skip-provider-button",
-				"--cookie-secret=SECRET",
 			},
-			backendEnvs: []string{},
-			expectedErr: "",
-			pageResult:  "Hello OpenShift!\n",
+			pageResult: "URI: /",
 		},
 		// Tests a scope that is not valid for SA OAuth client use
 		"scope-full": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				"--scope=user:full",
 			},
-			backendEnvs: []string{},
 			expectedErr: "403 Permission Denied",
-			pageResult:  "Hello OpenShift!\n",
 		},
 		"sar-ok": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--openshift-sar={"namespace":"` + ns + `","resource":"services","verb":"list"}`,
 			},
-			backendEnvs: []string{},
-			expectedErr: "",
-			pageResult:  "Hello OpenShift!\n",
+			pageResult: "URI: /",
 		},
 		"sar-fail": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--openshift-sar={"namespace":"other","resource":"services","verb":"list"}`,
 			},
-			backendEnvs: []string{},
 			expectedErr: "did not reach upstream site",
-			pageResult:  "Hello OpenShift!\n",
 		},
 		"sar-multi-ok": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--openshift-sar=[{"namespace":"` + ns + `","resource":"services","verb":"list"}, {"namespace":"` + ns + `","resource":"routes","verb":"list"}]`,
 			},
-			backendEnvs: []string{},
-			expectedErr: "",
-			pageResult:  "Hello OpenShift!\n",
+			pageResult: "URI: /",
 		},
 		"sar-multi-fail": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--openshift-sar=[{"namespace":"` + ns + `","resource":"services","verb":"list"}, {"namespace":"other","resource":"pods","verb":"list"}]`,
 			},
-			backendEnvs: []string{},
 			expectedErr: "did not reach upstream site",
-			pageResult:  "Hello OpenShift!\n",
 		},
 		"skip-auth-regex-bypass-foo": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--skip-auth-regex=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/foo",
-			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /foo\n",
+			pageResult:    "URI: /foo\n",
 			bypass:        true,
 		},
 		"skip-auth-regex-protect-bar": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--skip-auth-regex=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/bar",
-			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /bar\n",
+			pageResult:    "URI: /bar",
 		},
 		// test --bypass-auth-for (alias for --skip-auth-regex); expect to bypass auth for /foo
 		"bypass-auth-foo": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--bypass-auth-for=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/foo",
-			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /foo\n",
+			pageResult:    "URI: /foo\n",
 			bypass:        true,
 		},
 		// test --bypass-auth-except-for; expect to auth /foo
 		"bypass-auth-except-try-protected": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--bypass-auth-except-for=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/foo",
-			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /foo\n",
+			pageResult:    "URI: /foo\n",
 		},
 		// test --bypass-auth-except-for; expect to bypass auth for paths other than /foo
 		"bypass-auth-except-try-bypassed": {
 			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
 				"--upstream=http://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--cookie-secret=SECRET",
-				"--skip-provider-button",
 				`--bypass-auth-except-for=^/foo`,
 			},
-			backendEnvs:   []string{"HELLO_SUBPATHS=/foo,/bar"},
 			accessSubPath: "/bar",
-			expectedErr:   "",
-			pageResult:    "Hello OpenShift! /bar\n",
+			pageResult:    "URI: /bar",
 			bypass:        true,
 		},
+		// TODO: find or write a containerized test http server that allows simple TLS config
 		// --upstream-ca set with the CA for the backend site's certificate
-		"upstream-ca": {
-			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
-				"--upstream=https://localhost:8080",
-				"--upstream-ca=/etc/tls/private/upstreamca.crt",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--skip-provider-button",
-				"--cookie-secret=SECRET",
-			},
-			backendEnvs: []string{"HELLO_TLS_CERT=/etc/tls/private/upstream.crt", "HELLO_TLS_KEY=/etc/tls/private/upstream.key"},
-			expectedErr: "",
-			pageResult:  "Hello OpenShift!\n",
-		},
-		// --upstream-ca set multiple times, with one matching CA
-		"upstream-ca-multi": {
-			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
-				"--upstream=https://localhost:8080",
-				"--upstream-ca=/etc/tls/private/upstreamca.crt",
-				"--upstream-ca=/etc/tls/private/ca.crt",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--skip-provider-button",
-				"--cookie-secret=SECRET",
-			},
-			backendEnvs: []string{"HELLO_TLS_CERT=/etc/tls/private/upstream.crt", "HELLO_TLS_KEY=/etc/tls/private/upstream.key"},
-			expectedErr: "",
-			pageResult:  "Hello OpenShift!\n",
-		},
-		// no --upstream-ca set, so there's no valid TLS connection between proxy and upstream
-		"upstream-ca-missing": {
-			oauthProxyArgs: []string{
-				"--https-address=:8443",
-				"--provider=openshift",
-				"--openshift-service-account=proxy",
-				"--upstream=https://localhost:8080",
-				"--tls-cert=/etc/tls/private/tls.crt",
-				"--tls-key=/etc/tls/private/tls.key",
-				"--tls-client-ca=/etc/tls/private/ca.crt",
-				"--skip-provider-button",
-				"--cookie-secret=SECRET",
-			},
-			backendEnvs: []string{"HELLO_TLS_CERT=/etc/tls/private/upstream.crt", "HELLO_TLS_KEY=/etc/tls/private/upstream.key"},
-			expectedErr: "did not reach upstream site",
-			pageResult:  "Hello OpenShift!\n",
-		},
+		// "upstream-ca": {
+		// 	oauthProxyArgs: []string{
+		// 		"--upstream=https://localhost:8080",
+		// 		"--upstream-ca=/etc/tls/private/upstreamca.crt",
+		// 	},
+		// 	backendEnvs: []string{"HELLO_TLS_CERT=/etc/tls/private/upstream.crt", "HELLO_TLS_KEY=/etc/tls/private/upstream.key"},
+		// 	pageResult:  "URI: /",
+		// },
+		// // --upstream-ca set multiple times, with one matching CA
+		// "upstream-ca-multi": {
+		// 	oauthProxyArgs: []string{
+		// 		"--upstream=https://localhost:8080",
+		// 		"--upstream-ca=/etc/tls/private/upstreamca.crt",
+		// 		"--upstream-ca=/etc/tls/private/ca.crt",
+		// 	},
+		// 	backendEnvs: []string{"HELLO_TLS_CERT=/etc/tls/private/upstream.crt", "HELLO_TLS_KEY=/etc/tls/private/upstream.key"},
+		// 	pageResult:  "URI: /",
+		// },
+		// // no --upstream-ca set, so there's no valid TLS connection between proxy and upstream
+		// "upstream-ca-missing": {
+		// 	oauthProxyArgs: []string{
+		// 		"--upstream=https://localhost:8080",
+		// 	},
+		// 	backendEnvs: []string{"HELLO_TLS_CERT=/etc/tls/private/upstream.crt", "HELLO_TLS_KEY=/etc/tls/private/upstream.key"},
+		// 	expectedErr: "did not reach upstream site",
+		// },
 	}
 
-	image := os.Getenv("TEST_IMAGE")
-	backendImage := os.Getenv("HELLO_IMAGE")
+	// Get the image from a pod that we know uses oauth-proxy to wrap
+	// its endpoints with OpenShift auth
+	// TODO: is there a better way?
+	alertmanagerPod, err := kubeClient.CoreV1().Pods("openshift-monitoring").Get(testCtx, "alertmanager-main-0", metav1.GetOptions{})
+	require.NoError(t, err)
+	var image string
+	for _, c := range alertmanagerPod.Spec.Containers {
+		if c.Name == "alertmanager-proxy" {
+			image = c.Image
+		}
+	}
+	require.NotEmpty(t, image)
 
-	mathrand.Seed(time.Now().UTC().UnixNano())
-	kubeConfig, err := loadConfig(os.Getenv("KUBECONFIG"), os.Getenv("KUBECONTEXT"))
-	if err != nil {
-		t.Fatalf("error loading kubeconfig: '%s', ctx: '%s', err: %s", os.Getenv("KUBECONFIG"), os.Getenv("KUBECONTEXT"), err)
+	// get rid of kubeadmin user to remove the additional step of choosing an idp
+	err = kubeClient.CoreV1().Secrets("kube-system").Delete(context.TODO(), "kubeadmin", metav1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		t.Fatalf("couldn't remove the kubeadmin user: %v", err)
 	}
-	kubeClientSet, err := kubernetes.NewForConfig(kubeConfig)
-	if err != nil {
-		t.Fatalf("error generating kube client: %s", err)
-	}
+
+	users, idpCleanup := createTestIdP(t, kubeClient, configClient.ConfigV1().OAuths(), userClient, ns, len(oauthProxyTests))
+	defer func() {
+		if len(os.Getenv("DEBUG_TEST")) == 0 {
+			idpCleanup()
+		}
+	}()
+
+	// wait for the IdP to be honored in the oauth-server
+	WaitForClusterOperatorStatus(t, configClient.ConfigV1(), nil, pbool(true), nil)
+	WaitForClusterOperatorStatus(t, configClient.ConfigV1(), pbool(true), pbool(false), nil)
 
 	t.Logf("test image: %s, test namespace: %s", image, ns)
 
+	backendImage := "nginxdemos/nginx-hello:plain-text"
+	currentTestIdx := 0 // to pick the current user so that each test gets a fresh grant
 	for tcName, tc := range oauthProxyTests {
 		runOnly := os.Getenv("TEST")
 		if len(runOnly) > 0 && runOnly != tcName {
 			continue
 		}
+
 		t.Run(fmt.Sprintf("setting up e2e tests %s", tcName), func(t *testing.T) {
-			_, err := kubeClientSet.CoreV1().ServiceAccounts(ns).Create(testCtx, newOAuthProxySA(), metav1.CreateOptions{})
+			_, err := kubeClient.CoreV1().ServiceAccounts(ns).Create(testCtx, newOAuthProxySA(), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("setup: error creating SA: %s", err)
 			}
 
-			err = newOAuthProxyRoute(ns)
-			if err != nil {
-				t.Fatalf("setup: error creating route: %s", err)
-			}
-
-			// Find the exposed route hostname that we will be doing client actions against
-			proxyRouteHost, err := getRouteHost("proxy-route", ns)
-			if err != nil {
-				t.Fatalf("setup: error finding route host: %s", err)
-			}
+			proxyRouteHost := createOAuthProxyRoute(t, routeClient.RouteV1().Routes(ns))
 
 			// Create the TLS certificate set for the client and service (with the route hostname attributes)
 			caPem, serviceCert, serviceKey, err := createCAandCertSet(proxyRouteHost)
@@ -336,54 +233,38 @@ func TestOAuthProxyE2E(t *testing.T) {
 				t.Fatalf("setup: error creating upstream TLS certs: %s", err)
 			}
 
-			_, err = kubeClientSet.CoreV1().Services(ns).Create(testCtx, newOAuthProxyService(), metav1.CreateOptions{})
+			_, err = kubeClient.CoreV1().Services(ns).Create(testCtx, newOAuthProxyService(), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("setup: error creating service: %s", err)
 			}
 
 			// configMap provides oauth-proxy with the certificates we created above
-			_, err = kubeClientSet.CoreV1().ConfigMaps(ns).Create(testCtx, newOAuthProxyConfigMap(ns, caPem, serviceCert, serviceKey, upstreamCA, upstreamCert, upstreamKey), metav1.CreateOptions{})
+			_, err = kubeClient.CoreV1().ConfigMaps(ns).Create(testCtx, newOAuthProxyConfigMap(ns, caPem, serviceCert, serviceKey, upstreamCA, upstreamCert, upstreamKey), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("setup: error creating certificate configMap: %s", err)
 			}
 
-			oauthProxyPod, err := kubeClientSet.CoreV1().Pods(ns).Create(testCtx, newOAuthProxyPod(image, backendImage, tc.oauthProxyArgs, tc.backendEnvs), metav1.CreateOptions{})
+			oauthProxyPod, err := kubeClient.CoreV1().Pods(ns).Create(testCtx, newOAuthProxyPod(image, backendImage, tc.oauthProxyArgs), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("setup: error creating oauth-proxy pod with image '%s' and args '%v': %s", image, tc.oauthProxyArgs, err)
 			}
 
-			err = waitForPodRunningInNamespace(kubeClientSet, oauthProxyPod)
+			err = waitForPodRunningInNamespace(kubeClient, oauthProxyPod)
 			if err != nil {
 				t.Fatalf("setup: error waiting for pod to run: %s", err)
 			}
 
-			// Find the service CA for the client trust store
-			secrets, err := kubeClientSet.CoreV1().Secrets(ns).List(testCtx, metav1.ListOptions{})
-			if err != nil {
-				t.Fatalf("setup: error listing secrets: %s", err)
-			}
-
-			var openshiftPemCA []byte
-			for _, s := range secrets.Items {
-				cert, ok := s.Data["ca.crt"]
-				if !ok {
-					continue
-				}
-				openshiftPemCA = cert
-				break
-			}
-			if openshiftPemCA == nil {
-				t.Fatalf("setup: could not find openshift CA from secrets")
-			}
+			openshiftTransport, err := rest.TransportFor(testConfig)
+			require.NoError(t, err)
 
 			host := "https://" + proxyRouteHost + "/oauth/start"
 			// Wait for the route, we get an EOF if we move along too fast
-			err = waitUntilRouteIsReady([][]byte{caPem, openshiftPemCA}, host)
+			err = waitUntilRouteIsReady(t, openshiftTransport, host)
 			if err != nil {
 				t.Fatalf("setup: error waiting for route availability: %s", err)
 			}
 
-			user := randLogin()
+			user := users[currentTestIdx]
 			// For SAR tests the random user needs the admin role for this namespace.
 			out, err := execCmd("oc", []string{"adm", "policy", "add-role-to-user", "admin", user, "-n", ns, "--rolebinding-name", "sar-" + user}, "")
 			if err != nil {
@@ -396,20 +277,20 @@ func TestOAuthProxyE2E(t *testing.T) {
 					t.Fatalf("skipping cleanup step for test '%s' and stopping on command", tcName)
 				}
 				t.Logf("cleaning up test %s", tcName)
-				kubeClientSet.CoreV1().Pods(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
-				kubeClientSet.CoreV1().Services(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
+				kubeClient.CoreV1().Pods(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
+				kubeClient.CoreV1().Services(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
 				deleteTestRoute("proxy-route", ns)
-				kubeClientSet.CoreV1().ConfigMaps(ns).Delete(testCtx, "proxy-certs", metav1.DeleteOptions{})
-				kubeClientSet.CoreV1().ServiceAccounts(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
-				waitForPodDeletion(kubeClientSet, oauthProxyPod.Name, ns)
+				kubeClient.CoreV1().ConfigMaps(ns).Delete(testCtx, "proxy-certs", metav1.DeleteOptions{})
+				kubeClient.CoreV1().ServiceAccounts(ns).Delete(testCtx, "proxy", metav1.DeleteOptions{})
+				waitForPodDeletion(kubeClient, oauthProxyPod.Name, ns)
 				execCmd("oc", []string{"adm", "policy", "remove-role-from-user", "admin", user, "-n", ns}, "")
 			}()
 
-			waitForHealthzCheck([][]byte{caPem, openshiftPemCA}, "https://"+proxyRouteHost)
+			waitForHealthzCheck(t, openshiftTransport, "https://"+proxyRouteHost)
 
-			check3DESDisabled(t, [][]byte{caPem, openshiftPemCA}, "https://"+proxyRouteHost)
+			check3DESDisabled(t, "https://"+proxyRouteHost, caPem)
 
-			err = confirmOAuthFlow(proxyRouteHost, tc.accessSubPath, [][]byte{caPem, openshiftPemCA}, user, tc.pageResult, tc.expectedErr, tc.bypass)
+			err = testOAuthProxyLogin(t, openshiftTransport, proxyRouteHost, tc.accessSubPath, user, "password", tc.pageResult, tc.expectedErr, tc.bypass)
 
 			if err == nil && len(tc.expectedErr) > 0 {
 				t.Errorf("expected error '%s', but test passed", tc.expectedErr)
@@ -425,34 +306,24 @@ func TestOAuthProxyE2E(t *testing.T) {
 				}
 			}
 		})
+
+		// increase the current user
+		currentTestIdx++
 	}
 }
 
-func submitOAuthForm(client *http.Client, response *http.Response, user, expectedErr string) (*http.Response, error) {
-	responseBytes, err := ioutil.ReadAll(response.Body)
+func submitOAuthForm(client *http.Client, response *http.Response, user, password, expectedErr string) (*http.Response, error) {
+	bodyParsed, err := html.Parse(response.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	responseBuffer := bytes.NewBuffer(responseBytes)
-
-	body, err := html.Parse(responseBuffer)
-	if err != nil {
-		return nil, err
-	}
-
-	forms := getElementsByTagName(body, "form")
+	forms := getElementsByTagName(bodyParsed, "form")
 	if len(forms) != 1 {
-		errMsg := "expected OpenShift form"
-		// Return the expected error if it's found amongst the text elements
-		if expectedErr != "" {
-			checkBuffer := bytes.NewBuffer(responseBytes)
-			parsed, err := html.Parse(checkBuffer)
-			if err != nil {
-				return nil, err
-			}
-
-			textNodes := getTextNodes(parsed)
+		errMsg := "expected a single OpenShift form"
+		if len(expectedErr) != 0 {
+			// Return the expected error if it's found amongst the text elements
+			textNodes := getTextNodes(bodyParsed)
 			for i := range textNodes {
 				if textNodes[i].Data == expectedErr {
 					errMsg = expectedErr
@@ -460,9 +331,10 @@ func submitOAuthForm(client *http.Client, response *http.Response, user, expecte
 			}
 		}
 		return nil, fmt.Errorf(errMsg)
+
 	}
 
-	formReq, err := newRequestFromForm(forms[0], response.Request.URL, user)
+	formReq, err := newRequestFromForm(forms[0], response.Request.URL, user, password)
 	if err != nil {
 		return nil, err
 	}
@@ -475,56 +347,82 @@ func submitOAuthForm(client *http.Client, response *http.Response, user, expecte
 	return postResp, nil
 }
 
-func confirmOAuthFlow(host, subPath string, cas [][]byte, user, expectedPageResult, expectedErr string, expectedBypass bool) error {
-	// Set up the client cert store
-	client, err := newHTTPSClient(cas)
-	if err != nil {
-		return err
-	}
-
-	startUrl := "https://" + host + subPath
-	resp, err := getResponse(startUrl, client)
+func confirmOAuthFlow(client *http.Client, requestURL, user, password, expectedErr string, expectBypass bool) error {
+	resp, err := client.Get(requestURL)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
-	if !expectedBypass {
-		// OpenShift login
-		loginResp, err := submitOAuthForm(client, resp, user, expectedErr)
-		if err != nil {
-			return err
-		}
-		defer loginResp.Body.Close()
-
-		// authorization grant form
-		grantResp, err := submitOAuthForm(client, loginResp, user, expectedErr)
-		if err != nil {
-			return err
-		}
-
-		defer grantResp.Body.Close()
-		resp = grantResp
+	if resp.StatusCode != 200 {
+		r, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("expected to be redirected to the oauth-server login page, got %q; page content\n%s", resp.Status, r)
 	}
 
-	accessRespBody, err := ioutil.ReadAll(resp.Body)
+	// OpenShift login page
+	loginResp, err := submitOAuthForm(client, resp, user, password, expectedErr)
 	if err != nil {
-		return nil
+		return err
+	}
+	defer loginResp.Body.Close()
+	if resp.StatusCode != 200 {
+		r, _ := ioutil.ReadAll(loginResp.Body)
+		return fmt.Errorf("failed to submit the login form: %q\n page content\n%s", resp.Status, r)
 	}
 
-	if string(accessRespBody) != expectedPageResult {
-		return fmt.Errorf("did not reach upstream site")
+	// authorization grant form; no password should be expected
+	grantResp, err := submitOAuthForm(client, loginResp, user, "", expectedErr)
+	if err != nil {
+		return err
+	}
+	defer grantResp.Body.Close()
+	if resp.StatusCode != 200 {
+		r, _ := ioutil.ReadAll(grantResp.Body)
+		return fmt.Errorf("failed to submit the grant form: %q\n pageC content\n%s", resp.Status, r)
 	}
 
 	return nil
 }
 
-func check3DESDisabled(t *testing.T, cas [][]byte, url string) {
-	pool := x509.NewCertPool()
-	for _, ca := range cas {
-		if !pool.AppendCertsFromPEM(ca) {
-			t.Fatal("error loading CA for client config")
+func testOAuthProxyLogin(t *testing.T, transport http.RoundTripper, host, subPath, user, password, expectedResult, expectedErr string, expectBypass bool) error {
+	client := newHTTPSClient(t, transport)
+
+	if !expectBypass {
+		if err := confirmOAuthFlow(client, "https://"+host+subPath, user, password, expectedErr, expectBypass); err != nil {
+			return err
 		}
+	}
+
+	authenticateResp, err := client.Get("https://" + host + subPath)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve the base page")
+	}
+	defer authenticateResp.Body.Close()
+
+	// we should be authenticated now
+	if authenticateResp.StatusCode != 200 {
+		r, _ := ioutil.ReadAll(authenticateResp.Body)
+		return fmt.Errorf("expected to be authenticated, got status %q, page:\n%s", authenticateResp.Status, r)
+	}
+
+	if authenticateResp.Request.Host != host {
+		return fmt.Errorf("did not reach upstream site")
+	}
+
+	authenticatedContent, err := ioutil.ReadAll(authenticateResp.Body)
+	require.NoError(t, err)
+
+	if !strings.Contains(string(authenticatedContent), expectedResult) {
+		// don't print the whole returned page, it makes the test result unreadable
+		t.Fatalf("expected authenticated page to contain %s, but it's missing", expectedResult)
+	}
+
+	return nil
+}
+
+func check3DESDisabled(t *testing.T, proxyURL string, proxyCA []byte) {
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(proxyCA) {
+		t.Fatalf("error loading CA for client config")
 	}
 
 	jar, _ := cookiejar.New(nil)
@@ -537,17 +435,16 @@ func check3DESDisabled(t *testing.T, cas [][]byte, url string) {
 				tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
 				tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
 			},
+			// TLS 1.3 uses specific cipher suites and ignores the cipher suite config above
+			MaxVersion: tls.VersionTLS12,
 		},
 	}
-
 	client := &http.Client{Transport: tr, Jar: jar}
-	resp, err := getResponse(url, client)
-
+	resp, err := getResponse(proxyURL, client)
 	if err == nil {
 		resp.Body.Close()
 		t.Fatal("expected to fail with weak ciphers")
 	}
-
 	if !strings.Contains(err.Error(), "handshake failure") {
 		t.Fatalf("expected TLS handshake error with weak ciphers, got: %v", err)
 	}
