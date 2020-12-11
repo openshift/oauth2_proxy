@@ -819,6 +819,11 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 	return http.StatusAccepted
 }
 
+// CheckBasicAuth attempts to grab HTTP basic-auth credentials from the Authorization header
+//
+// returns a SessionState object if the user is a valid user from the provided HTPasswd
+// file otherwise it returns nil, and an error if there were issues with the Authorization
+// header
 func (p *OAuthProxy) CheckBasicAuth(req *http.Request) (*providers.SessionState, error) {
 	if p.HtpasswdFile == nil {
 		return nil, nil
@@ -829,7 +834,7 @@ func (p *OAuthProxy) CheckBasicAuth(req *http.Request) (*providers.SessionState,
 	}
 	s := strings.SplitN(auth, " ", 2)
 	if len(s) != 2 || s[0] != "Basic" {
-		return nil, fmt.Errorf("Authorization header does not start with 'Basic', skipping basic authentication")
+		return nil, nil
 	}
 	b, err := b64.StdEncoding.DecodeString(s[1])
 	if err != nil {
