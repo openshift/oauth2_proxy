@@ -18,6 +18,9 @@ func NewStringArray() *StringArray {
 }
 
 func (a StringArray) Get() interface{} {
+	if a.stringArray == nil {
+		return nil
+	}
 	return *a.stringArray
 }
 
@@ -27,5 +30,8 @@ func (a StringArray) Set(s string) error {
 }
 
 func (a StringArray) String() string {
+	if a.stringArray == nil {
+		return ""
+	}
 	return strings.Join(*a.stringArray, ",")
 }
