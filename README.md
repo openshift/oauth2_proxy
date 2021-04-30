@@ -116,10 +116,10 @@ Cons:
 Example:
 
     # Allows access if the provided bearer token has view permission on a custom resource
-    --openshift-delegate-urls='{"/":{"group":"custom.group","resource":"myproxy""verb":"get"}}'
+    --openshift-delegate-urls='{"/":{"group":"custom.group","resource":"myproxy","verb":"get"}}'
 
     # Grant access only to paths under /api
-    --openshift-delegate-urls='{"/api":{"group":"custom.group","resource":"myproxy""verb":"get"}}'
+    --openshift-delegate-urls='{"/api":{"group":"custom.group","resource":"myproxy","verb":"get"}}'
 
 WARNING: Because users are sending their own credentials to the proxy, it's important to use this 
 setting only when the proxy is under control of the cluster administrators. Otherwise, end users 
