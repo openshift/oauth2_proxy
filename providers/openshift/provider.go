@@ -247,11 +247,18 @@ func (o recordsByPath) Less(i, j int) bool {
 	return o[i].path < o[j].path
 }
 
+// Match returns lonest matching record of the given path
 func (o recordsByPath) Match(path string) (pathRecord, bool) {
+	longestMatchIndex := -1
 	for i := range o {
 		if strings.HasPrefix(path, o[i].path) {
-			return o[i], true
+			if longestMatchIndex == -1 || len(o[i].path) > len(o[longestMatchIndex].path) {
+				longestMatchIndex = i
+			}
 		}
+	}
+	if longestMatchIndex != -1 {
+		return o[longestMatchIndex], true
 	}
 	return pathRecord{}, false
 }
