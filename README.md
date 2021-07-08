@@ -116,14 +116,14 @@ Cons:
 Example:
 
     # Allows access if the provided bearer token has view permission on a custom resource
-    --openshift-delegate-urls='{"/":{"group":"custom.group","resource":"myproxy""verb":"get"}}'
+    --openshift-delegate-urls='{"/":{"group":"custom.group","resource":"myproxy","verb":"get"}}'
 
     # Grant access only to paths under /api
-    --openshift-delegate-urls='{"/api":{"group":"custom.group","resource":"myproxy""verb":"get"}}'
+    --openshift-delegate-urls='{"/api":{"group":"custom.group","resource":"myproxy","verb":"get"}}'
 
 WARNING: Because users are sending their own credentials to the proxy, it's important to use this 
 setting only when the proxy is under control of the cluster administrators. Otherwise, end users 
-may be unwittingly provide their credentials to untrusted components that can then act as them.
+may be unwittingly to provide their credentials to untrusted components that can then act as them.
 
 When configured for delegation, Oauth Proxy will not set the `X-Forwarded-Access-Token` header on
 the upstream request. If you wish to forward the bearer token received from the client, you will
